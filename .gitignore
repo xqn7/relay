@@ -1,0 +1,35 @@
+# Planning files (local only)
+prompt.md
+PLAN.md
+START HERE.txt
+/design-reference/
+
+# Secrets — never commit
+.env
+.env.*
+*.key
+*.key.pub
+*.pem
+*.pfx
+.relay-keys/
+secrets/
+
+# App data / databases
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+/data/
+
+# Build output
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/schemas/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log
