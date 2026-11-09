@@ -44,6 +44,7 @@ class UiStore {
   searchOpen = $state(false);
   settingsOpen = $state(false);
   queueOpen = $state(false);
+  fullscreenOpen = $state(false);
   /** Files are being dragged over the window from outside. */
   filesOver = $state(false);
   /** Art of the open artist/album page; the backdrop takes its colors while it's open. */
@@ -69,6 +70,7 @@ class UiStore {
   /** Goes to a page from anywhere (links, menus, tiles). */
   open(route: Route): void {
     this.searchOpen = false;
+    this.fullscreenOpen = false;
     this.go(route, this.scrollTop());
   }
 
@@ -102,7 +104,7 @@ class UiStore {
   resetNav(): void {
     this.stack = [{ route: { name: "home" }, key: nextId++, scroll: 0 }];
     this.pos = 0;
-    this.searchOpen = this.settingsOpen = this.queueOpen = false;
+    this.searchOpen = this.settingsOpen = this.queueOpen = this.fullscreenOpen = false;
   }
 
   toast(text: string, icon?: IconName, action?: Toast["action"]): number {

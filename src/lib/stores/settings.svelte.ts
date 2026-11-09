@@ -1,6 +1,10 @@
 // User preferences with defaults (Liner's where Liner has the same setting). Every change is
 // saved immediately. Keys listed in DEVICE_KEYS belong to the PC, everything else to the account.
-import { api } from "../api";
+import { api, type TranslateLang } from "../api";
+
+export type LyricsStyle = "karaoke" | "glow" | "bounce" | "fade";
+export const LYRICS_STYLES: LyricsStyle[] = ["karaoke", "glow", "bounce", "fade"];
+export const IDLE_MINUTES = [1, 2, 3, 5, 10];
 
 export const defaults = {
   autoplay: true,
@@ -17,6 +21,12 @@ export const defaults = {
   showCachedInLibrary: true,
   autoBackup: false,
   backupFolder: "",
+  lyricsStyle: "karaoke" as LyricsStyle,
+  translateLyrics: false,
+  translateTo: "en" as TranslateLang,
+  upNext: true,
+  /** Minutes without input before the idle screen shows. */
+  idleMinutes: 3,
 };
 
 export type Settings = typeof defaults;
@@ -35,6 +45,9 @@ function valid<K extends SettingKey>(key: K, value: unknown): value is Settings[
   if (key === "quality") return value === "best" || value === "dataSaver";
   if (key === "maxCacheGb") return CACHE_SIZES.includes(value as number);
   if (key === "downloadLimitGb") return DOWNLOAD_SIZES.includes(value as number);
+  if (key === "lyricsStyle") return LYRICS_STYLES.includes(value as LyricsStyle);
+  if (key === "translateTo") return value === "en" || value === "de";
+  if (key === "idleMinutes") return IDLE_MINUTES.includes(value as number);
   if (key === "backupFolder") return typeof value === "string" && value.length < 1024;
   return true;
 }

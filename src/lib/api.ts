@@ -216,6 +216,7 @@ export interface Usage {
   cacheSongsBytes: number;
   cacheSongsCount: number;
   artworkBytes: number;
+  lyricsBytes: number;
   freeBytes: number | null;
   averageSongBytes: number;
 }
@@ -234,6 +235,26 @@ export interface ConnectionCheck {
   code: string;
   detail: string;
 }
+
+export interface LyricLine {
+  timeMs: number;
+  text: string;
+}
+
+export interface Lyrics {
+  synced: LyricLine[] | null;
+  plain: string | null;
+  instrumental: boolean;
+  source: "lrclib" | "youtube" | "user";
+  credit: string | null;
+}
+
+export interface Translation {
+  lines: string[];
+  sourceLang: string | null;
+}
+
+export type TranslateLang = "en" | "de";
 
 /** Error shape returned by every failing command. */
 export interface AppError {
@@ -363,7 +384,7 @@ export const api = {
   offlineLists: () => invoke<{ downloaded: Track[]; cached: Track[] }>("offline_lists"),
   downloadStatus: () => invoke<DownloadStatus>("download_status"),
   storageUsage: () => invoke<Usage>("storage_usage"),
-  storageClear: (what: "songs" | "artwork" | "downloads") => invoke<void>("storage_clear", { what }),
+  storageClear: (what: "songs" | "artwork" | "lyrics" | "downloads") => invoke<void>("storage_clear", { what }),
   storageOpen: (what: "downloads" | "cache") => invoke<void>("storage_open", { what }),
   netStatus: () => invoke<boolean>("net_status"),
   netCheck: () => invoke<boolean>("net_check"),
@@ -376,6 +397,15 @@ export const api = {
   coverDragPrepare: (url: string, name: string) => invoke<void>("cover_drag_prepare", { url, name }),
   coverDragStart: () => invoke<void>("cover_drag_start"),
   localUseHdCover: (track: Track) => invoke<void>("local_use_hd_cover", { track: plain(track) }),
+
+  lyricsGet: (track: Track) => invoke<Lyrics | null>("lyrics_get", { track: plain(track) }),
+  lyricsPreload: (tracks: Track[], lang: TranslateLang | null) => invoke<void>("lyrics_preload", { tracks: tracks.map(plain), lang }),
+  lyricsTranslate: (trackId: string, lang: TranslateLang) => invoke<Translation>("lyrics_translate", { trackId, lang }),
+  lyricsSave: (track: Track, lines: LyricLine[], plainText: string) =>
+    invoke<Lyrics>("lyrics_save", { track: plain(track), lines, plain: plainText }),
+  lyricsReset: (track: Track) => invoke<Lyrics | null>("lyrics_reset", { track: plain(track) }),
+  deeplKeySaved: () => invoke<boolean>("deepl_key_saved"),
+  deeplKeySet: (key: string | null) => invoke<void>("deepl_key_set", { key }),
 };
 
 /** "1.2 GB", "340 MB". */

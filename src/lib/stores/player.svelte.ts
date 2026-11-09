@@ -79,6 +79,19 @@ class Player {
     return Q.upcoming(this.queue);
   }
 
+  /** The song that plays when this one ends, if any (not the same one on repeat). */
+  get nextItem(): Q.QueueItem | null {
+    const i = Q.nextIndex(this.queue, true, this.skipItem);
+    const item = i == null ? null : this.queue.items[i];
+    return item && item.uid !== this.current?.uid ? item : null;
+  }
+
+  /** The exact playback position right now, for views that move with the music (lyrics).
+   * `positionMs` only updates a few times a second. */
+  livePositionMs(): number {
+    return this.loadedUid && this.loadedUid === this.current?.uid ? this.engine.positionMs : this.positionMs;
+  }
+
   /** Wires backend events. Called once after sign-in. */
   async attach(): Promise<void> {
     await listen<{ action: string; positionMs: number | null }>("media-key", ({ payload }) => {

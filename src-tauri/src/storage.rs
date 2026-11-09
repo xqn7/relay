@@ -69,6 +69,7 @@ pub struct Usage {
     pub cache_songs_bytes: u64,
     pub cache_songs_count: u64,
     pub artwork_bytes: u64,
+    pub lyrics_bytes: u64,
     pub free_bytes: Option<u64>,
     pub average_song_bytes: u64,
 }
@@ -578,6 +579,7 @@ pub fn usage(state: &AppState, account: &str) -> AppResult<Usage> {
         cache_songs_bytes,
         cache_songs_count,
         artwork_bytes: dir_size(&state.storage.art_dir),
+        lyrics_bytes: crate::lyrics::cache_bytes(&state.db)?,
         free_bytes: free_space(&state.storage.downloads_dir),
         average_song_bytes,
     })
@@ -603,6 +605,7 @@ pub fn clear(state: &Arc<AppState>, account: &str, what: &str) -> AppResult<()> 
             }
             state.covers.clear_memory();
         }
+        "lyrics" => crate::lyrics::clear_cache(&state.db)?,
         "downloads" => {
             // Removes this account's saves; songs other accounts (or Liked Songs downloads)
             // still want stay.

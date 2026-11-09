@@ -2,7 +2,9 @@
   import { coverAt, proxiedCover } from "../api";
   import { dominantColors, neutralColors, toneForBackdrop, type Rgb } from "./colors";
 
-  let { cover }: { cover: string | null } = $props();
+  // `full`: the colors fill the whole view (fullscreen player, idle screen) instead of
+  // melting into near-black below the top.
+  let { cover, full = false }: { cover: string | null; full?: boolean } = $props();
 
   // One set of blobs drifts forever; only their colors change. The colors are registered CSS
   // properties (see tokens.css), so the browser blends old → new smoothly with no flash and
@@ -36,6 +38,7 @@
 
 <div
   class="backdrop"
+  class:full
   aria-hidden="true"
   style:--bd-1={css(colors[0], 0.9)}
   style:--bd-2={css(colors[1] ?? colors[0], 0.75)}
@@ -88,6 +91,15 @@
     position: absolute;
     inset: 0;
     background: linear-gradient(to bottom, rgba(10, 10, 11, 0) 0%, rgba(10, 10, 11, 0.55) 34%, var(--bg) 62%);
+  }
+  .full .blob {
+    height: 150vh;
+  }
+  .full .c {
+    top: 10vh;
+  }
+  .full .shade {
+    background: linear-gradient(to bottom, rgba(10, 10, 11, 0.18), rgba(10, 10, 11, 0.5) 70%, rgba(10, 10, 11, 0.72));
   }
   @keyframes drift-a {
     to {

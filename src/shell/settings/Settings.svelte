@@ -7,6 +7,7 @@
   import { session } from "../../lib/stores/session.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
   import { pages, type PageId } from "./pages";
+  import AppearancePage from "./AppearancePage.svelte";
   import PlaybackPage from "./PlaybackPage.svelte";
   import StoragePage from "./StoragePage.svelte";
 
@@ -71,12 +72,15 @@
       <div>
         <h2>{t(current.label)}</h2>
         {#if current.id === "playback"}<p>{t("settings.sub.playback")}</p>{/if}
+        {#if current.id === "appearance"}<p>{t("settings.sub.appearance")}</p>{/if}
       </div>
       <IconButton icon="close" label={t("settings.close")} onclick={() => (ui.settingsOpen = false)} />
     </header>
     <div class="content">
       {#if current.id === "playback"}
         <PlaybackPage {visible} />
+      {:else if current.id === "appearance"}
+        <AppearancePage {visible} />
       {:else if current.id === "storage"}
         <StoragePage {visible} />
       {:else}

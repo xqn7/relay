@@ -38,6 +38,7 @@ const TABLES: &[&str] = &[
     "offline",
     "matches",
     "tracks",
+    "lyrics",
 ];
 
 fn to_json(v: ValueRef) -> Value {
@@ -80,7 +81,9 @@ pub fn export(db: &Db) -> AppResult<Value> {
     db.with(|c| {
         let mut tables = Map::new();
         for t in TABLES {
-            tables.insert(t.to_string(), Value::Array(dump(c, &format!("SELECT * FROM {t}"))?));
+            // Looked-up lyrics are cache; only the user's own lyrics belong in a backup.
+            let only = if *t == "lyrics" { " WHERE user_edited=1" } else { "" };
+            tables.insert(t.to_string(), Value::Array(dump(c, &format!("SELECT * FROM {t}{only}"))?));
         }
         // Only preferences; internal values (sign-in, client ids) belong to this PC.
         let prefs = dump(c, "SELECT key,value FROM device_settings WHERE key LIKE 'pref.%'")?;

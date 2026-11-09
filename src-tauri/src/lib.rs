@@ -10,17 +10,21 @@ mod importer;
 mod library;
 mod library_commands;
 mod local;
+mod lyrics;
+mod lyrics_commands;
 mod m3u;
 mod matcher;
 mod matching;
 mod media;
 mod network;
 mod resolver;
+mod secrets;
 mod sources;
 mod storage;
 mod storage_commands;
 mod streams;
 mod tools;
+mod translate;
 mod util;
 
 use accounts::Account;
@@ -50,6 +54,7 @@ pub struct AppState {
     pub imports: importer::Imports,
     pub storage: storage::Storage,
     pub net: network::Network,
+    pub lyrics_locks: lyrics::Locks,
     pub artist_cache: Mutex<HashMap<String, (Instant, sources::ArtistPage)>>,
 }
 
@@ -94,6 +99,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         imports: importer::Imports::default(),
         storage: storage::Storage::new(&local_dir)?,
         net: network::Network::new(),
+        lyrics_locks: lyrics::Locks::default(),
         artist_cache: Mutex::new(HashMap::new()),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
@@ -280,6 +286,13 @@ pub fn run() {
             storage_commands::cover_drag_prepare,
             storage_commands::cover_drag_start,
             storage_commands::local_use_hd_cover,
+            lyrics_commands::lyrics_get,
+            lyrics_commands::lyrics_preload,
+            lyrics_commands::lyrics_translate,
+            lyrics_commands::lyrics_save,
+            lyrics_commands::lyrics_reset,
+            lyrics_commands::deepl_key_saved,
+            lyrics_commands::deepl_key_set,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

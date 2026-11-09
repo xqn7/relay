@@ -1,6 +1,6 @@
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { fade, fly } from "svelte/transition";
   import Backdrop from "../lib/backdrop/Backdrop.svelte";
   import Menu from "../lib/components/Menu.svelte";
@@ -15,13 +15,18 @@
   import Library from "../pages/Library.svelte";
   import ListPage from "../pages/ListPage.svelte";
   import TrashPage from "../pages/TrashPage.svelte";
+  import { lyrics } from "../lib/stores/lyrics.svelte";
+  import { offline } from "../lib/stores/offline.svelte";
   import DialogHost from "./dialogs/DialogHost.svelte";
+  import FullscreenPlayer from "./fullscreen/FullscreenPlayer.svelte";
+  import IdleScreen from "./idle/IdleScreen.svelte";
   import PlayerBar from "./PlayerBar.svelte";
   import QueuePanel from "./QueuePanel.svelte";
   import SearchPopup from "./SearchPopup.svelte";
   import Settings from "./settings/Settings.svelte";
   import Sidebar from "./Sidebar.svelte";
   import TitleBar from "./TitleBar.svelte";
+  import UpNext from "./UpNext.svelte";
 
   let { onSignOut }: { onSignOut: () => void } = $props();
 
@@ -55,6 +60,13 @@
       offDrag.then((f) => f());
       offAdd.then((f) => f());
     };
+  });
+
+  // Lyrics follow the current song (and load once the connection is back).
+  $effect(() => {
+    void offline.online;
+    const track = player.current?.track ?? null;
+    untrack(() => lyrics.follow(track));
   });
 
   // Restore the remembered scroll position after each page change.
@@ -120,10 +132,13 @@
 
 {#if ui.queueOpen}<QueuePanel />{/if}
 <PlayerBar />
+<UpNext />
+{#if ui.fullscreenOpen}<FullscreenPlayer />{/if}
 {#if ui.searchOpen}<SearchPopup />{/if}
 {#if ui.settingsOpen}<Settings {onSignOut} />{/if}
 <Menu />
 <DialogHost />
+<IdleScreen />
 {#if dnd.payload}
   <div class="ghost glass" style:left="{dnd.x + 14}px" style:top="{dnd.y + 10}px">{dnd.payload.label}</div>
 {/if}

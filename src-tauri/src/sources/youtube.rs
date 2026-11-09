@@ -177,6 +177,19 @@ impl YouTube {
 impl YouTube {
     /// Song search on YouTube Music. With `videos`, searches music videos instead, which
     /// the matcher only uses when no plain song matched.
+    /// YouTube Music's own lyrics for a song (plain text, no timing), with the credit line
+    /// YouTube shows under them. Ok(None) when YouTube has no lyrics for it.
+    pub async fn lyrics(&self, video_id: &str) -> AppResult<Option<(String, String)>> {
+        let q = self.rp.query();
+        let details = q.music_details(video_id).await.map_err(map_err)?;
+        let Some(lyrics_id) = details.lyrics_id else { return Ok(None) };
+        match q.music_lyrics(&lyrics_id).await {
+            Ok(l) if !l.body.trim().is_empty() => Ok(Some((l.body, l.footer))),
+            Ok(_) | Err(RpError::Extraction(ExtractionError::NotFound { .. })) => Ok(None),
+            Err(e) => Err(map_err(e)),
+        }
+    }
+
     pub async fn search_songs(&self, query: &str, videos: bool) -> AppResult<Vec<Track>> {
         let q = self.rp.query();
         let items = if videos {

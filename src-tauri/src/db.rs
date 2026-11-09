@@ -166,6 +166,26 @@ CREATE TABLE hd_covers(
     url TEXT,
     checked_at INTEGER NOT NULL
 );
+"#, r#"
+CREATE TABLE lyrics(
+    track_id TEXT PRIMARY KEY,
+    synced TEXT,
+    plain TEXT,
+    instrumental INTEGER NOT NULL DEFAULT 0,
+    source TEXT,
+    credit TEXT,
+    user_edited INTEGER NOT NULL DEFAULT 0,
+    checked_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE TABLE translations(
+    track_id TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    lines TEXT NOT NULL,
+    source_lang TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(track_id, lang)
+);
 "#];
 
 impl Db {

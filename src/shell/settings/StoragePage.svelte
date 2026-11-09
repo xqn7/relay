@@ -39,7 +39,7 @@
   });
 
   const myMusic = $derived(usage ? usage.downloadsBytes + usage.importedBytes : 0);
-  const cache = $derived(usage ? usage.cacheSongsBytes + usage.artworkBytes : 0);
+  const cache = $derived(usage ? usage.cacheSongsBytes + usage.artworkBytes + usage.lyricsBytes : 0);
   const total = $derived(myMusic + cache);
 
   function sizeOptions(sizes: number[]) {
@@ -68,7 +68,7 @@
     }
   }
 
-  function clear(what: "songs" | "artwork" | "downloads") {
+  function clear(what: "songs" | "artwork" | "lyrics" | "downloads") {
     const run = () =>
       api
         .storageClear(what)
@@ -184,6 +184,9 @@
     </SettingRow>
     <SettingRow label={t("storage.artwork")} desc={formatBytes(usage?.artworkBytes ?? 0)}>
       <Button variant="secondary" disabled={!usage?.artworkBytes} onclick={() => clear("artwork")}>{t("storage.clear")}</Button>
+    </SettingRow>
+    <SettingRow label={t("storage.lyrics")} desc={`${t("storage.lyricsDesc")} · ${formatBytes(usage?.lyricsBytes ?? 0)}`}>
+      <Button variant="secondary" disabled={!usage?.lyricsBytes} onclick={() => clear("lyrics")}>{t("storage.clear")}</Button>
     </SettingRow>
     {#if visible("storage.maxCache", "storage.maxCacheDesc")}
       <SettingRow label={t("storage.maxCache")} desc={`${t("storage.maxCacheDesc")} ${songsFor(v.maxCacheGb)}`}>

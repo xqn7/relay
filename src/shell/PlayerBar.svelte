@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { fade, scale } from "svelte/transition";
   import { formatTime } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
@@ -48,15 +49,22 @@
 
   <div class="now">
     {#if track}
-      <Cover src={shownCover} size={44} />
-      <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [track], index: 0 })}>
-        <div class="title truncate">{track.title}</div>
-        <div class="artist">
-          <SourceBadge source={shownSource} />
-          <span class="truncate">
-            {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="artist-link" onclick={() => openArtist(a, track.source)}>{a.name}</button>{/each}
-          </span>
-        </div>
+      <!-- Old and new song share one cell, so the change is a soft crossfade, not a jump. -->
+      <div class="swap">
+        {#key track.id}
+          <div class="swap-cell" in:scale={{ start: 0.96, duration: 280, opacity: 0 }} out:fade={{ duration: 160 }}>
+            <button class="cover-btn" title={t("full.open")} onclick={() => (ui.fullscreenOpen = true)}><Cover src={shownCover} size={44} /></button>
+            <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [track], index: 0 })}>
+              <div class="title truncate">{track.title}</div>
+              <div class="artist">
+                <SourceBadge source={shownSource} />
+                <span class="truncate">
+                  {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="artist-link" onclick={() => openArtist(a, track.source)}>{a.name}</button>{/each}
+                </span>
+              </div>
+            </div>
+          </div>
+        {/key}
       </div>
       <LikeButton {track} />
     {:else}
@@ -94,6 +102,7 @@
       {/if}
       <IconButton icon={volumeIcon} label={player.muted ? t("player.unmute") : t("player.mute")} onclick={() => player.toggleMute()} />
     </div>
+    <IconButton icon="micVocal" label={t("full.lyrics")} active={ui.fullscreenOpen} disabled={!track} onclick={() => (ui.fullscreenOpen = !ui.fullscreenOpen)} />
     <IconButton icon="queue" label={t("player.queue")} active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} />
   </div>
 </footer>
@@ -125,6 +134,28 @@
     align-items: center;
     gap: var(--s3);
     min-width: 0;
+  }
+  .swap {
+    display: grid;
+    min-width: 0;
+  }
+  .swap-cell {
+    grid-area: 1 / 1;
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    min-width: 0;
+  }
+  .cover-btn {
+    flex: none;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    transition: transform var(--t-fast) var(--ease);
+  }
+  .cover-btn:hover {
+    transform: scale(1.04);
   }
   .meta {
     min-width: 0;

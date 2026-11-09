@@ -32,7 +32,7 @@ lofty = "0.25"
 # Event-based watching of the Local music folder (ReadDirectoryChangesW), no polling.
 notify = { version = "8", default-features = false }
 windows-core = "0.62"
-windows = { version = "0.62", features = ["Media", "Foundation", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_System_Com", "Win32_Media_Audio", "Win32_UI_Shell_PropertiesSystem", "Networking_Connectivity", "Win32_Storage_FileSystem", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell_Common"] }
+windows = { version = "0.62", features = ["Media", "Foundation", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_System_Com", "Win32_Media_Audio", "Win32_UI_Shell_PropertiesSystem", "Networking_Connectivity", "Win32_Storage_FileSystem", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell_Common", "Win32_Security_Credentials"] }
 
 [profile.release]
 codegen-units = 1
