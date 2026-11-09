@@ -2,7 +2,7 @@
      lyrics (or the lyrics editor) beside it. -->
 <script lang="ts">
   import { fade, fly, scale } from "svelte/transition";
-  import { api, coverAt, formatTime, proxiedCover } from "../../lib/api";
+  import { api, coverAt, formatTime, proxiedCover, type Track } from "../../lib/api";
   import Backdrop from "../../lib/backdrop/Backdrop.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import IconButton from "../../lib/components/IconButton.svelte";
@@ -21,10 +21,10 @@
   const track = $derived(player.current?.track ?? null);
   const cover = $derived(track?.cover ?? player.via?.cover ?? null);
   let hd = $state<{ id: string; url: string } | null>(null);
-  const coverUrl = $derived.by(() => {
-    const url = hd && hd.id === track?.id ? hd.url : coverAt(cover, 1200);
+  function artUrl(tr: Track | null): string | null {
+    const url = tr && hd?.id === tr.id ? hd.url : coverAt(tr?.cover ?? player.via?.cover ?? null, 1200);
     return url ? proxiedCover(url) : null;
-  });
+  }
   let seekPreview = $state<number | null>(null);
   const progress = $derived(seekPreview ?? (player.durationMs > 0 ? player.positionMs / player.durationMs : 0));
   let editing = $state(false);
@@ -61,33 +61,34 @@
   <div class="body">
     <section class="now">
       <div class="art">
-        {#key track?.id}
+        {#each [track] as tr (tr?.id)}
+          {@const url = artUrl(tr)}
           <div class="art-cell" in:scale={{ start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: 360 }}>
-            {#if coverUrl}
-              <img src={coverUrl} alt="" draggable="false" />
+            {#if url}
+              <img src={url} alt="" draggable="false" />
             {:else}
               <div class="art-empty"><Icon name="music" size={64} /></div>
             {/if}
           </div>
-        {/key}
+        {/each}
       </div>
 
       {#if track}
         <div class="meta">
-          {#key track.id}
+          {#each [track] as tr (tr.id)}
             <div class="names" in:fly={{ y: 6, duration: 260, delay: 80 }} out:fade={{ duration: 120 }}>
-              <h1 class="truncate">{track.title}</h1>
+              <h1 class="truncate">{tr.title}</h1>
               <p class="truncate">
-                {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button
+                {#each tr.artists as a, i (i)}{#if i > 0}, {/if}<button
                     class="artist"
                     onclick={() => {
                       close();
-                      openArtist(a, track.source);
+                      openArtist(a, tr.source);
                     }}>{a.name}</button
                   >{/each}
               </p>
             </div>
-          {/key}
+          {/each}
           <LikeButton {track} size={22} />
         </div>
       {/if}

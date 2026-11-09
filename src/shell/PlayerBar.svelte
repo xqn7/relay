@@ -15,8 +15,6 @@
   import { openTrackMenu } from "../lib/trackMenu";
 
   const track = $derived(player.current?.track ?? null);
-  const shownSource = $derived(player.via?.source ?? (track ? playsFrom(track) : "youtube"));
-  const shownCover = $derived(track?.cover ?? player.via?.cover ?? null);
   let seekPreview = $state<number | null>(null);
   const progress = $derived(seekPreview ?? (player.durationMs > 0 ? player.positionMs / player.durationMs : 0));
   const repeatLabel = $derived(
@@ -49,22 +47,23 @@
 
   <div class="now">
     {#if track}
-      <!-- Old and new song share one cell, so the change is a soft crossfade, not a jump. -->
+      <!-- Old and new song share one cell, so the change is a soft crossfade, not a jump. A keyed
+           each keeps the outgoing song's own details while it fades. -->
       <div class="swap">
-        {#key track.id}
+        {#each [track] as tr (tr.id)}
           <div class="swap-cell" in:scale={{ start: 0.96, duration: 280, opacity: 0 }} out:fade={{ duration: 160 }}>
-            <button class="cover-btn" title={t("full.open")} onclick={() => (ui.fullscreenOpen = true)}><Cover src={shownCover} size={44} /></button>
-            <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [track], index: 0 })}>
-              <div class="title truncate">{track.title}</div>
+            <button class="cover-btn" title={t("full.open")} onclick={() => (ui.fullscreenOpen = true)}><Cover src={tr.cover ?? player.via?.cover ?? null} size={44} /></button>
+            <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [tr], index: 0 })}>
+              <div class="title truncate">{tr.title}</div>
               <div class="artist">
-                <SourceBadge source={shownSource} />
+                <SourceBadge source={player.via?.source ?? playsFrom(tr)} />
                 <span class="truncate">
-                  {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="artist-link" onclick={() => openArtist(a, track.source)}>{a.name}</button>{/each}
+                  {#each tr.artists as a, i (i)}{#if i > 0}, {/if}<button class="artist-link" onclick={() => openArtist(a, tr.source)}>{a.name}</button>{/each}
                 </span>
               </div>
             </div>
           </div>
-        {/key}
+        {/each}
       </div>
       <LikeButton {track} />
     {:else}

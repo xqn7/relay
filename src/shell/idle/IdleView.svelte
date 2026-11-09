@@ -59,11 +59,12 @@
   {#if track}
     <div class="song">
       <div class="art">
-        {#key track.id}
+        {#each [track] as tr (tr.id)}
+          {@const art = tr.cover ?? player.via?.cover ?? null}
           <div class="art-cell" in:scale={{ start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: 360 }}>
-            {#if cover}<img src={proxiedCover(coverAt(cover, 400) ?? cover)} alt="" />{/if}
+            {#if art}<img src={proxiedCover(coverAt(art, 400) ?? art)} alt="" />{/if}
           </div>
-        {/key}
+        {/each}
       </div>
       <div class="meta">
         <div class="title truncate">{track.title}</div>

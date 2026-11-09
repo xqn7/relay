@@ -21,7 +21,8 @@
       !player.loading &&
       player.durationMs >= MIN_SONG_MS &&
       remaining > 0 &&
-      remaining <= SHOW_BEFORE_END_MS &&
+      // With crossfade the next song takes over that much earlier.
+      remaining <= SHOW_BEFORE_END_MS + settings.values.crossfade * 1000 &&
       next != null,
   );
 </script>
