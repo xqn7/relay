@@ -36,25 +36,60 @@ pub fn emit_status(state: &AppState, status: SourceStatus) {
     let _ = state.app.emit("source-status", status);
 }
 
+/// The steps the resolver tries, in order. The app's sources provide them; tests use fakes,
+/// so the fallback order is checked without the network.
+pub(crate) trait Steps {
+    /// The saved (or freshly searched) playable match of an imported song.
+    async fn matched(&self, track: &Track) -> AppResult<Option<Track>>;
+    /// The song's own source.
+    async fn native(&self, track: &Track) -> AppResult<ResolvedStream>;
+    /// The same song found on `source`.
+    async fn stand_in(&self, track: &Track, source: &'static str) -> AppResult<(Track, ResolvedStream)>;
+    fn status(&self, status: SourceStatus);
+}
+
+struct Live<'a> {
+    state: &'a AppState,
+    quality: Quality,
+    fresh: bool,
+}
+
+impl Steps for Live<'_> {
+    async fn matched(&self, track: &Track) -> AppResult<Option<Track>> {
+        matching::matched(self.state, track, true).await
+    }
+    async fn native(&self, track: &Track) -> AppResult<ResolvedStream> {
+        native_stream(self.state, track, self.quality, self.fresh).await
+    }
+    async fn stand_in(&self, track: &Track, source: &'static str) -> AppResult<(Track, ResolvedStream)> {
+        stand_in(self.state, track, source, self.quality).await
+    }
+    fn status(&self, status: SourceStatus) {
+        emit_status(self.state, status);
+    }
+}
+
 /// Resolves within RESOLVE_TIMEOUT or fails with a clear "nothing playable" error.
 pub async fn resolve(state: &AppState, track: &Track, quality: Quality, fresh: bool) -> AppResult<Resolution> {
-    match tokio::time::timeout(RESOLVE_TIMEOUT, resolve_inner(state, track, quality, fresh)).await {
+    let steps = Live { state, quality, fresh };
+    match tokio::time::timeout(RESOLVE_TIMEOUT, resolve_with(&steps, track)).await {
         Ok(r) => r,
         Err(_) => Err(AppError::new("nothing_playable", "timed out after 20 s")),
     }
 }
 
-async fn resolve_inner(state: &AppState, track: &Track, quality: Quality, fresh: bool) -> AppResult<Resolution> {
-    if is_import_only(&track.source) {
+async fn resolve_with(steps: &impl Steps, requested: &Track) -> AppResult<Resolution> {
+    let matched;
+    let track = if is_import_only(&requested.source) {
         // Imported songs play through their saved (or freshly searched) match.
-        let matched = matching::matched(state, track, true)
-            .await?
-            .ok_or_else(|| AppError::new("nothing_playable", "no match on YouTube or SoundCloud"))?;
-        return Box::pin(resolve_inner(state, &matched, quality, fresh)).await;
-    }
-    let native_err = match native_stream(state, track, quality, fresh).await {
+        matched = steps.matched(requested).await?.ok_or_else(|| AppError::new("nothing_playable", "no match on YouTube or SoundCloud"))?;
+        &matched
+    } else {
+        requested
+    };
+    let native_err = match steps.native(track).await {
         Ok(stream) => {
-            emit_status(state, SourceStatus { source: source_name(&track.source), ok: true, code: "ok", fallback: None });
+            steps.status(SourceStatus { source: source_name(&track.source), ok: true, code: "ok", fallback: None });
             return Ok(Resolution { played: track.clone(), stream, stand_in: false });
         }
         Err(e) => e,
@@ -62,17 +97,14 @@ async fn resolve_inner(state: &AppState, track: &Track, quality: Quality, fresh:
     let fallback = if track.source == YOUTUBE { SOUNDCLOUD } else { YOUTUBE };
     // A missing or Go+-only song is a fact about the song, not a broken service.
     let service_broken = !matches!(native_err.code, "not_found" | "unavailable" | "preview_only" | "helper_installing");
-    emit_status(
-        state,
-        SourceStatus {
-            source: source_name(&track.source),
-            ok: !service_broken,
-            code: native_err.code,
-            fallback: Some(source_name(fallback)),
-        },
-    );
-    match stand_in(state, track, fallback, quality).await {
-        Ok(r) => Ok(r),
+    steps.status(SourceStatus {
+        source: source_name(&track.source),
+        ok: !service_broken,
+        code: native_err.code,
+        fallback: Some(source_name(fallback)),
+    });
+    match steps.stand_in(track, fallback).await {
+        Ok((played, stream)) => Ok(Resolution { played, stream, stand_in: true }),
         Err(e) => Err(AppError::new("nothing_playable", format!("{native_err}; stand-in: {e}"))),
     }
 }
@@ -97,7 +129,7 @@ async fn native_stream(state: &AppState, track: &Track, quality: Quality, fresh:
     Ok(result)
 }
 
-async fn stand_in(state: &AppState, track: &Track, source: &str, quality: Quality) -> AppResult<Resolution> {
+async fn stand_in(state: &AppState, track: &Track, source: &str, quality: Quality) -> AppResult<(Track, ResolvedStream)> {
     let query = format!("{} {}", track.artist_line(), matcher::clean_title(&track.title));
     let results = match source {
         YOUTUBE => state.yt.search(&query, SearchKind::Songs).await?,
@@ -108,7 +140,7 @@ async fn stand_in(state: &AppState, track: &Track, source: &str, quality: Qualit
         .clone();
     state.db.upsert_track(&candidate)?;
     let stream = native_stream(state, &candidate, quality, false).await?;
-    Ok(Resolution { played: candidate, stream, stand_in: true })
+    Ok((candidate, stream))
 }
 
 fn cached_stream(state: &AppState, track_id: &str) -> AppResult<Option<ResolvedStream>> {
@@ -149,4 +181,116 @@ fn store_stream(state: &AppState, track_id: &str, s: &ResolvedStream) -> AppResu
 /// Called when a URL turned out dead before its stated expiry (403/410 mid-download).
 pub fn forget_stream(state: &AppState, track_id: &str) {
     let _ = state.db.with(|c| c.execute("DELETE FROM stream_cache WHERE track_id=?1", [track_id]));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::cell::RefCell;
+
+    /// Plays only from the listed sources and records every step the resolver takes.
+    struct Fake {
+        working: Vec<&'static str>,
+        native_error: &'static str,
+        log: RefCell<Vec<String>>,
+        statuses: RefCell<Vec<(&'static str, bool)>>,
+    }
+
+    fn fake(working: &[&'static str], native_error: &'static str) -> Fake {
+        Fake { working: working.to_vec(), native_error, log: RefCell::default(), statuses: RefCell::default() }
+    }
+
+    fn stream() -> ResolvedStream {
+        ResolvedStream {
+            url: "https://x.test/a".into(),
+            kind: StreamKind::Direct,
+            mime: "audio/mp4".into(),
+            expires_at: 0,
+            size: None,
+            loudness_db: None,
+            user_agent: None,
+        }
+    }
+
+    fn song(source: &str) -> Track {
+        Track::imported(source, "1", "Song", vec!["Artist".into()], Some(200_000), None, None)
+    }
+
+    impl Steps for Fake {
+        async fn matched(&self, track: &Track) -> AppResult<Option<Track>> {
+            self.log.borrow_mut().push(format!("match {}", track.source));
+            Ok(self.working.first().map(|s| song(s)))
+        }
+        async fn native(&self, track: &Track) -> AppResult<ResolvedStream> {
+            self.log.borrow_mut().push(format!("native {}", track.source));
+            if self.working.contains(&track.source.as_str()) {
+                Ok(stream())
+            } else {
+                Err(AppError::new(self.native_error, "fake failure"))
+            }
+        }
+        async fn stand_in(&self, _track: &Track, source: &'static str) -> AppResult<(Track, ResolvedStream)> {
+            self.log.borrow_mut().push(format!("stand-in {source}"));
+            if self.working.contains(&source) {
+                Ok((song(source), stream()))
+            } else {
+                Err(AppError::new("no_match", "fake"))
+            }
+        }
+        fn status(&self, status: SourceStatus) {
+            self.statuses.borrow_mut().push((status.source, status.ok));
+        }
+    }
+
+    fn run(steps: &Fake, track: &Track) -> AppResult<Resolution> {
+        tokio::runtime::Builder::new_current_thread().build().unwrap().block_on(resolve_with(steps, track))
+    }
+
+    #[test]
+    fn own_source_first() {
+        let f = fake(&[YOUTUBE, SOUNDCLOUD], "network");
+        let r = run(&f, &song(YOUTUBE)).unwrap();
+        assert!(!r.stand_in);
+        assert_eq!(f.log.borrow().as_slice(), ["native youtube"]);
+        assert_eq!(f.statuses.borrow().as_slice(), [(YOUTUBE, true)]);
+    }
+
+    #[test]
+    fn broken_youtube_falls_back_to_soundcloud() {
+        let f = fake(&[SOUNDCLOUD], "source_failed");
+        let r = run(&f, &song(YOUTUBE)).unwrap();
+        assert!(r.stand_in);
+        assert_eq!(r.played.source, SOUNDCLOUD);
+        assert_eq!(f.log.borrow().as_slice(), ["native youtube", "stand-in soundcloud"]);
+        // Reported as a failing service, so the "trying SoundCloud" toast shows.
+        assert_eq!(f.statuses.borrow().as_slice(), [(YOUTUBE, false)]);
+    }
+
+    #[test]
+    fn soundcloud_falls_back_to_youtube_without_blaming_the_service() {
+        let f = fake(&[YOUTUBE], "preview_only");
+        let r = run(&f, &song(SOUNDCLOUD)).unwrap();
+        assert_eq!(r.played.source, YOUTUBE);
+        assert_eq!(f.log.borrow().as_slice(), ["native soundcloud", "stand-in youtube"]);
+        assert_eq!(f.statuses.borrow().as_slice(), [(SOUNDCLOUD, true)]);
+    }
+
+    #[test]
+    fn imported_songs_play_through_their_match() {
+        let f = fake(&[YOUTUBE], "network");
+        let r = run(&f, &song("spotify")).unwrap();
+        assert_eq!(r.played.source, YOUTUBE);
+        assert!(!r.stand_in);
+        assert_eq!(f.log.borrow().as_slice(), ["match spotify", "native youtube"]);
+    }
+
+    #[test]
+    fn nothing_playable_when_every_step_fails() {
+        let f = fake(&[], "network");
+        assert_eq!(run(&f, &song(YOUTUBE)).err().unwrap().code, "nothing_playable");
+        assert_eq!(f.log.borrow().as_slice(), ["native youtube", "stand-in soundcloud"]);
+        let unmatched = fake(&[], "network");
+        assert_eq!(run(&unmatched, &song("deezer")).err().unwrap().code, "nothing_playable");
+        assert_eq!(unmatched.log.borrow().as_slice(), ["match deezer"]);
+    }
 }
