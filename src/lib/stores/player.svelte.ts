@@ -14,6 +14,8 @@ const MEDIA_SYNC_MS = 5_000;
 const RESTART_THRESHOLD_MS = 3_000;
 const SOURCE_TOAST_COOLDOWN_MS = 60_000;
 const AUTOPLAY_BATCH = 10;
+/** After this many songs in a row fail, stop instead of racing through the whole queue. */
+const MAX_FAILS_IN_A_ROW = 3;
 
 interface Saved extends Q.QueueState {
   positionMs: number;
@@ -45,6 +47,7 @@ class Player {
   private lastMediaSync = 0;
   private sourceToastAt = new Map<string, number>();
   private autoplayBusy = false;
+  private failsInARow = 0;
 
   constructor() {
     this.engine = new AudioEngine({
@@ -285,6 +288,8 @@ class Player {
       if (token !== this.loadToken) return;
       this.applyPrepared(item, prepared);
       this.loadedUid = item.uid;
+      this.failsInARow = 0;
+      this.retriedUid = null;
       await this.engine.load(prepared.url, { startMs, autoplay, loudnessDb: prepared.loudnessDb });
       this.prefetchFollowing();
     } catch (e) {
@@ -314,7 +319,11 @@ class Player {
           : t("toast.skipped", { title: item.track.title });
     ui.toast(text, "alert");
     this.playing = false;
-    if (code === "offline" || code === "network") return;
+    this.failsInARow += 1;
+    if (code === "offline" || code === "network" || this.failsInARow >= MAX_FAILS_IN_A_ROW) {
+      this.failsInARow = 0;
+      return;
+    }
     const i = Q.nextIndex(this.queue, false);
     // Skip forward unless that would wrap around to the song that just failed.
     if (i != null && i !== this.queue.index && !(this.queue.repeat === "all" && i === 0)) {
@@ -417,7 +426,9 @@ class Player {
     const item = this.current;
     if (!item) return;
     if (this.retriedUid === item.uid) {
-      this.retriedUid = null;
+      // Unload so the dead stream can't fire more errors and start another retry.
+      this.engine.unload();
+      this.loadedUid = null;
       this.failAndSkip(item, { code: reason, detail: "stream failed twice" });
       return;
     }

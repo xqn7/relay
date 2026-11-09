@@ -8,6 +8,23 @@
   font-display: block;
 }
 
+/* Registered so the cover-color backdrop can transition between colors smoothly. */
+@property --bd-1 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --bd-2 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+@property --bd-3 {
+  syntax: "<color>";
+  inherits: true;
+  initial-value: transparent;
+}
+
 :root {
   --bg: #0a0a0b;
   --bg-raised: #121214;

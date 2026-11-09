@@ -65,13 +65,15 @@ CREATE TABLE stream_cache(
     size INTEGER,
     loudness_db REAL
 );
-"#];
+"#, "ALTER TABLE stream_cache ADD COLUMN user_agent TEXT;"];
 
 impl Db {
     pub fn open(path: &Path) -> AppResult<Self> {
         let conn = Connection::open(path)?;
         conn.execute_batch(
-            "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=3000;",
+            // Rollback journal, not WAL: one connection doesn't need WAL's concurrency, and a
+            // hard-killed process can never leave a stale -wal file to be replayed later.
+            "PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=3000;",
         )?;
         migrate(&conn)?;
         Ok(Self(Mutex::new(conn)))

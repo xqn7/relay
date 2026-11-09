@@ -78,7 +78,7 @@ pub fn clean_title(title: &str) -> String {
 fn is_junk_group(inner: &str) -> bool {
     let t = inner.trim();
     t.is_empty()
-        || JUNK.iter().any(|j| t == *j)
+        || JUNK.contains(&t)
         || t.starts_with("prod")
         || t.starts_with("feat")
         || t.starts_with("ft.")

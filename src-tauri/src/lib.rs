@@ -31,7 +31,6 @@ pub struct AppState {
     pub yt: YouTube,
     pub sc: SoundCloud,
     pub streams: Streams,
-    pub tools: Tools,
     pub media: MediaControls,
     pub covers: covers::Covers,
     pub account: Mutex<Option<Account>>,
@@ -62,16 +61,22 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .background_color(tauri::window::Color(10, 10, 11, 255))
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
         .disable_drag_drop_handler()
-        .on_navigation(|url| is_app_url(url))
+        // WebView2 would otherwise register its own media session and grab the media keys,
+        // pausing the <audio> elements behind the app's back. Relay's own SMTC session handles
+        // them instead. The first three flags are wry's defaults, which this setting replaces.
+        .additional_browser_args(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,HardwareMediaKeyHandling,MediaSessionService",
+        )
+        .on_navigation(is_app_url)
         .build()?;
 
     let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
     let http = Arc::new(Http::new());
+    let tools = Arc::new(Tools::new(local_dir.join("tools"), http.clone(), handle.clone()));
     let state = AppState {
-        yt: YouTube::new(&local_dir.join("youtube"))?,
+        yt: YouTube::new(&local_dir.join("youtube"), tools)?,
         sc: SoundCloud::new(http.clone(), db.clone()),
         streams: Streams::new(local_dir.join("buffer"))?,
-        tools: Tools::new(local_dir.join("tools")),
         media: MediaControls::attach(&handle, window.hwnd()?),
         account: Mutex::new(None),
         covers: covers::Covers::default(),
@@ -101,6 +106,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // A second launch (desktop shortcut, Start menu) brings the running player forward
+        // instead of starting another one that would fight over the database and audio.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .register_asynchronous_uri_scheme_protocol("relay", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {

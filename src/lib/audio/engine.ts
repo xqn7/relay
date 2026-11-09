@@ -29,6 +29,8 @@ interface Deck {
   fade: GainNode;
   analyser: AnalyserNode;
   url: string | null;
+  /** Pause events we caused ourselves and should not treat as an outside pause. */
+  ownPauses: number;
   /** Loudness samples (dBFS) taken while the song plays, when the service gave none. */
   samples: number[] | null;
 }
@@ -77,11 +79,21 @@ export class AudioEngine {
     analyser.fftSize = 2048;
     source.connect(norm).connect(fade).connect(this.master!);
     source.connect(analyser);
-    const deck: Deck = { el, norm, fade, analyser, url: null, samples: null };
+    const deck: Deck = { el, norm, fade, analyser, url: null, ownPauses: 0, samples: null };
     el.addEventListener("timeupdate", () => i === this.active && this.onTime(deck));
     el.addEventListener("ended", () => i === this.active && this.onEnded());
     el.addEventListener("waiting", () => i === this.active && this.setBuffering(true));
     el.addEventListener("playing", () => i === this.active && this.setBuffering(false));
+    // Something outside the app paused the audio (or the system did); keep the UI truthful.
+    el.addEventListener("pause", () => {
+      if (deck.ownPauses > 0) {
+        deck.ownPauses -= 1;
+        return;
+      }
+      if (i !== this.active || !this.wantPlaying || this.transitioning || el.ended || !deck.url) return;
+      this.wantPlaying = false;
+      this.events.state(false, false);
+    });
     el.addEventListener("error", () => {
       if (i === this.active && deck.url) this.events.error("load");
       else if (i !== this.active) this.nextReady = false;
@@ -96,18 +108,10 @@ export class AudioEngine {
     return this.decks[1 - this.active];
   }
 
-  get playing(): boolean {
-    return this.wantPlaying;
-  }
-
   get positionMs(): number {
     return this.ctx ? this.cur.el.currentTime * 1000 : 0;
   }
 
-  get durationMs(): number {
-    const d = this.ctx ? this.cur.el.duration : NaN;
-    return Number.isFinite(d) ? d * 1000 : 0;
-  }
 
   /** Loads a song into the active deck, fading out whatever played before. */
   async load(url: string, opts: { startMs?: number; autoplay: boolean; loudnessDb: number | null }): Promise<void> {
@@ -115,7 +119,7 @@ export class AudioEngine {
     this.cancelTransition();
     const old = this.cur;
     if (!old.el.paused) await this.fadeTo(old, 0, FADE_S);
-    old.el.pause();
+    this.quietPause(old);
     this.clearNext();
     this.prepareDeck(old, url, opts.loudnessDb);
     if (opts.startMs) await this.seekWhenReady(old, opts.startMs / 1000);
@@ -155,6 +159,20 @@ export class AudioEngine {
     this.nearEndSent = false;
   }
 
+  /** Stops and empties the active deck, e.g. after a song failed for good. */
+  unload(): void {
+    if (!this.ctx) return;
+    this.cancelTransition();
+    this.clearNext();
+    const deck = this.cur;
+    deck.url = null;
+    this.quietPause(deck);
+    deck.el.removeAttribute("src");
+    deck.el.load();
+    this.wantPlaying = false;
+    this.events.state(false, false);
+  }
+
   async play(): Promise<void> {
     if (!this.ctx || !this.cur.url) return;
     this.wantPlaying = true;
@@ -168,7 +186,7 @@ export class AudioEngine {
     this.cancelTransition();
     this.events.state(false, false);
     await this.fadeTo(this.cur, 0, FADE_S);
-    if (!this.wantPlaying) this.cur.el.pause();
+    if (!this.wantPlaying) this.quietPause(this.cur);
   }
 
   async seek(ms: number): Promise<void> {
@@ -217,6 +235,12 @@ export class AudioEngine {
     }
     this.events.state(true, false);
     this.fadeTo(deck, 1, fadeS);
+  }
+
+  private quietPause(deck: Deck): void {
+    if (deck.el.paused) return;
+    deck.ownPauses += 1;
+    deck.el.pause();
   }
 
   private fadeTo(deck: Deck, value: number, seconds: number): Promise<void> {

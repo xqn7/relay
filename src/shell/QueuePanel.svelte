@@ -23,8 +23,8 @@
 
   function startDrag(e: PointerEvent, uid: string) {
     if (e.button !== 0) return;
+    e.preventDefault();
     const row = (e.currentTarget as HTMLElement).closest<HTMLElement>(".item")!;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     drag = { uid, startY: e.clientY, offset: 0, rowH: row.getBoundingClientRect().height + 2 };
   }
 
@@ -47,6 +47,9 @@
     drag = null;
   }
 </script>
+
+<!-- Tracked on the window: reordering moves the row in the DOM, which would drop pointer capture. -->
+<svelte:window onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag} />
 
 <aside class="panel glass" transition:fly={{ x: 24, duration: 180 }}>
   <header>
@@ -81,7 +84,7 @@
             tabindex="0"
             ondblclick={() => player.jumpTo(item.uid)}
             onkeydown={(e) => e.key === "Enter" && player.jumpTo(item.uid)}>
-            <span class="grip" role="button" tabindex="-1" aria-label={t("queue.drag")} title={t("queue.drag")} onpointerdown={(e) => startDrag(e, item.uid)} onpointermove={moveDrag} onpointerup={endDrag} onpointercancel={endDrag}>
+            <span class="grip" role="button" tabindex="-1" aria-label={t("queue.drag")} title={t("queue.drag")} onpointerdown={(e) => startDrag(e, item.uid)}>
               <Icon name="grip" size={16} />
             </span>
             <Cover src={item.track.cover} size={40} />
@@ -227,6 +230,7 @@
   }
   footer {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--s2);
     padding: 10px 12px 12px;
     border-top: 1px solid var(--hairline);

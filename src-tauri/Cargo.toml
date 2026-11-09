@@ -24,6 +24,7 @@ argon2 = { version = "0.5", features = ["std"] }
 password-hash = { version = "0.5", features = ["getrandom"] }
 rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots"] }
 sha2 = "0.10"
+tauri-plugin-single-instance = "2"
 windows-core = "0.62"
 windows = { version = "0.62", features = ["Media", "Foundation", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_System_Com", "Win32_Media_Audio", "Win32_UI_Shell_PropertiesSystem"] }
 

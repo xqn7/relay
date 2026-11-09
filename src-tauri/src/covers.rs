@@ -9,8 +9,11 @@ use tauri::http::{header, Request, Response, StatusCode};
 const MAX_BYTES: usize = 6 * 1024 * 1024;
 const KEEP: usize = 48;
 
+/// (url, image bytes, mime type)
+type Entry = (String, Arc<Vec<u8>>, String);
+
 #[derive(Default)]
-pub struct Covers(Mutex<VecDeque<(String, Arc<Vec<u8>>, String)>>);
+pub struct Covers(Mutex<VecDeque<Entry>>);
 
 impl Covers {
     fn get(&self, url: &str) -> Option<(Arc<Vec<u8>>, String)> {

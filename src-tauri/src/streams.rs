@@ -25,6 +25,8 @@ const KEEP_BUFFERS: usize = 12;
 const MAX_URL_REFRESHES: u32 = 3;
 const MAX_NETWORK_RETRIES: u32 = 5;
 const SERVE_WAIT: Duration = Duration::from_secs(30);
+const HLS_PARALLEL: usize = 6;
+const HLS_HEAD_PARALLEL: usize = 16;
 
 #[derive(Clone, Debug, Default)]
 pub struct Progress {
@@ -59,11 +61,24 @@ pub struct Streams {
 }
 
 impl Streams {
-    /// Phase 1 keeps buffers for this run only, so leftovers from the last run are removed.
+    /// Buffers only live for one run (the song cache arrives in Phase 3), so leftovers go.
     pub fn new(dir: PathBuf) -> std::io::Result<Self> {
-        let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir)?;
-        Ok(Self { dir, buffers: Mutex::new(HashMap::new()) })
+        let streams = Self { dir, buffers: Mutex::new(HashMap::new()) };
+        streams.sweep(&[]);
+        Ok(streams)
+    }
+
+    /// Deletes buffer files that no live buffer owns. Best effort: a file the webview still has
+    /// open can't be deleted on Windows, so this runs again whenever a buffer is added.
+    fn sweep(&self, keep: &[PathBuf]) {
+        let Ok(entries) = std::fs::read_dir(&self.dir) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !keep.contains(&path) {
+                let _ = std::fs::remove_file(&path);
+            }
+        }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<Buffer>>> {
@@ -84,6 +99,8 @@ impl Streams {
         if let Some(old) = map.insert(track_id, buf) {
             drop_buffer(&old);
         }
+        let keep: Vec<PathBuf> = map.values().map(|b| b.path.clone()).collect();
+        self.sweep(&keep);
         if map.len() > KEEP_BUFFERS {
             let mut by_age: Vec<(String, Instant)> =
                 map.iter().map(|(k, b)| (k.clone(), *b.last_used.lock().unwrap_or_else(|p| p.into_inner()))).collect();
@@ -139,14 +156,28 @@ fn start_buffer(state: &Arc<AppState>, requested_id: &str, r: Resolution, qualit
 async fn download(state: Arc<AppState>, buf: Arc<Buffer>, r: Resolution, quality: Quality) {
     let result = match r.stream.kind {
         StreamKind::Direct => download_direct(&state, &buf, r, quality).await,
-        StreamKind::Hls => download_hls(&state, &buf, &r.stream.url).await,
+        StreamKind::Hls => match download_hls(&state, &buf, &r.stream.url).await {
+            // Segment links are signed and can expire before the playlist does: resolve again once.
+            Err(e) if e.code == "forbidden" => {
+                resolver::forget_stream(&state, &r.played.id);
+                match resolver::resolve(&state, &r.played, quality, true).await {
+                    Ok(fresh) if fresh.stream.kind == StreamKind::Hls => download_hls(&state, &buf, &fresh.stream.url).await,
+                    Ok(fresh) => download_direct(&state, &buf, fresh, quality).await,
+                    Err(e) => Err(e),
+                }
+            }
+            other => other,
+        },
     };
     buf.progress.send_modify(|p| match result {
         Ok(()) => {
             p.done = true;
             p.total = Some(p.written);
         }
-        Err(e) => p.failed = Some(e),
+        Err(e) => {
+            eprintln!("stream download failed for {}: {e}", buf.played.id);
+            p.failed = Some(e);
+        }
     });
 }
 
@@ -163,8 +194,11 @@ async fn download_direct(state: &Arc<AppState>, buf: &Buffer, mut r: Resolution,
             break;
         }
         let end = written + CHUNK - 1;
-        let url = r.stream.url.clone();
-        let resp = state.http.client.get(&url).header(header::RANGE, format!("bytes={written}-{end}")).send().await;
+        let mut req = state.http.client.get(&r.stream.url).header(header::RANGE, format!("bytes={written}-{end}"));
+        if let Some(ua) = &r.stream.user_agent {
+            req = req.header(header::USER_AGENT, ua);
+        }
+        let resp = req.send().await;
         let resp = match resp {
             Ok(resp) => resp,
             Err(_) if retries < MAX_NETWORK_RETRIES => {
@@ -250,16 +284,21 @@ async fn download_hls(state: &Arc<AppState>, buf: &Buffer, playlist_url: &str) -
     if segments.is_empty() || segments.iter().any(|s| !s.starts_with("https://")) {
         return Err(AppError::new("bad_response", "HLS playlist has no usable segments"));
     }
+    // The player needs the total size before it can start; asking each segment's size is far
+    // quicker than downloading them all first.
+    if let Some(total) = hls_total_size(state, &segments).await {
+        buf.progress.send_modify(|p| p.total = Some(total));
+    }
     let mut file = tokio::fs::File::create(&buf.path).await?;
     let mut written = 0u64;
-    // Four segments in flight at a time, written strictly in order.
-    for group in segments.chunks(4) {
+    // A few segments in flight at a time, written strictly in order.
+    for group in segments.chunks(HLS_PARALLEL) {
         let handles: Vec<_> = group
             .iter()
             .map(|url| {
                 let (state, url) = (state.clone(), url.clone());
                 tokio::spawn(async move {
-                    let resp = state.http.send(&url, |c| c.get(&url)).await?;
+                    let resp = state.http.client.get(&url).send().await?;
                     crate::http::check_status(&resp)?;
                     Ok::<_, AppError>(resp.bytes().await?)
                 })
@@ -273,7 +312,38 @@ async fn download_hls(state: &Arc<AppState>, buf: &Buffer, playlist_url: &str) -
         }
     }
     file.flush().await?;
+    if buf.progress.borrow().total.is_some_and(|t| t != written) {
+        // A segment's real size differed from what HEAD said; trust what we actually got.
+        buf.progress.send_modify(|p| p.total = Some(written));
+    }
     Ok(())
+}
+
+/// Sum of all segment sizes, or None if any size is unknown. Asks for one byte of each segment
+/// and reads the total from Content-Range, because SoundCloud's CDN answers HEAD with length 0.
+async fn hls_total_size(state: &Arc<AppState>, segments: &[String]) -> Option<u64> {
+    let mut total = 0u64;
+    for group in segments.chunks(HLS_HEAD_PARALLEL) {
+        let handles: Vec<_> = group
+            .iter()
+            .map(|url| {
+                let (state, url) = (state.clone(), url.clone());
+                tokio::spawn(async move {
+                    let resp = state.http.client.get(&url).header(header::RANGE, "bytes=0-0").send().await.ok()?;
+                    let size = match resp.status().as_u16() {
+                        206 => parse_total(resp.headers().get(header::CONTENT_RANGE).and_then(|v| v.to_str().ok())),
+                        200 => resp.content_length(),
+                        _ => None,
+                    };
+                    size.filter(|s| *s > 0)
+                })
+            })
+            .collect();
+        for h in handles {
+            total += h.await.ok().flatten()?;
+        }
+    }
+    Some(total)
 }
 
 fn parse_range(value: Option<&str>) -> (u64, Option<u64>) {

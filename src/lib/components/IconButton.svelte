@@ -21,7 +21,7 @@
   } = $props();
 </script>
 
-<button class="icon-btn {variant}" class:active title={label} aria-label={label} aria-pressed={active || undefined} {disabled} {onclick}>
+<button type="button" class="icon-btn {variant}" class:active title={label} aria-label={label} aria-pressed={active || undefined} {disabled} {onclick}>
   <Icon name={icon} {size} />
 </button>
 

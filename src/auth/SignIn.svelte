@@ -298,6 +298,8 @@
     position: relative;
   }
   h1 {
+    /* Narrow on purpose so the headline breaks into two balanced lines. */
+    max-width: 210px;
     margin: 0 0 10px;
     font-size: 30px;
     line-height: 1.1;

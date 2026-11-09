@@ -1,30 +1,31 @@
-//! YouTube / YouTube Music through rustypipe (InnerTube). When YouTube changes its player or
-//! search responses, updating rustypipe or this file is the fix (see FIXING.md).
+//! YouTube / YouTube Music. The catalog (search, albums, radio) comes from rustypipe's InnerTube
+//! client; audio streams come from yt-dlp, which keeps up with YouTube's player changes
+//! (signatures, PO tokens) much faster. See FIXING.md.
 
 use super::*;
 use crate::error::{AppError, AppResult};
-use crate::util::now_secs;
+use crate::tools::Tools;
 use rustypipe::client::RustyPipe;
 use rustypipe::error::{Error as RpError, ExtractionError};
 use rustypipe::model::{AlbumItem, ArtistItem, MusicItem, MusicPlaylistItem, Thumbnail, TrackItem, TrackType};
-use rustypipe::param::StreamFilter;
 use std::path::Path;
-
-const DATA_SAVER_BITRATE: u32 = 72_000;
+use std::sync::Arc;
 
 pub struct YouTube {
     rp: RustyPipe,
+    tools: Arc<Tools>,
 }
 
 impl YouTube {
-    pub fn new(storage_dir: &Path) -> AppResult<Self> {
+    pub fn new(storage_dir: &Path, tools: Arc<Tools>) -> AppResult<Self> {
+        tools.warm_up();
         let rp = RustyPipe::builder()
             .storage_dir(storage_dir)
             .no_botguard()
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(map_err)?;
-        Ok(Self { rp })
+        Ok(Self { rp, tools })
     }
 }
 
@@ -129,26 +130,7 @@ impl Source for YouTube {
     }
 
     async fn resolve(&self, track: &Track, quality: Quality) -> AppResult<ResolvedStream> {
-        let player = self.rp.query().player(&track.source_id).await.map_err(map_err)?;
-        let filter = match quality {
-            Quality::Best => StreamFilter::new(),
-            Quality::DataSaver => StreamFilter::new().audio_max_bitrate(DATA_SAVER_BITRATE),
-        };
-        let stream = player
-            .select_audio_stream(&filter)
-            .ok_or_else(|| AppError::new("unavailable", "YouTube returned no audio stream"))?;
-        if !stream.url.starts_with("https://") {
-            return Err(AppError::new("bad_response", "YouTube stream URL is not https"));
-        }
-        Ok(ResolvedStream {
-            url: stream.url.clone(),
-            kind: StreamKind::Direct,
-            mime: stream.mime.split(';').next().unwrap_or("audio/webm").to_string(),
-            // Leave a margin so a URL is never handed out moments before it dies.
-            expires_at: now_secs() + player.expires_in_seconds as i64 - 120,
-            size: (stream.size > 0).then_some(stream.size),
-            loudness_db: stream.loudness_db,
-        })
+        self.tools.ytdlp_stream(&track.source_id, quality).await
     }
 
     async fn collection_tracks(&self, kind: &str, id: &str) -> AppResult<Vec<Track>> {

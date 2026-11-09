@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
-  import { api, isAppError, SOURCES, type Collection, type SearchKind, type SearchResults, type SourceId, type Track } from "../lib/api";
+  import { api, isAppError, SOURCES, type Collection, type SearchKind, type SearchResults, type SourceId } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import SourceBadge from "../lib/components/SourceBadge.svelte";
@@ -62,7 +62,9 @@
   }
 
   const done = $derived(SOURCES.map((s) => results[s]).filter((r): r is Extract<Status, { state: "done" }> => r?.state === "done").map((r) => r.data));
-  const tracks = $derived(done.flatMap((d) => d.tracks).slice(0, kind === "all" ? 12 : 60));
+  // In "All", each source gets its own share so SoundCloud songs aren't pushed out by YouTube's.
+  const perSource = $derived(kind === "all" ? { youtube: 8, soundcloud: 5 } : { youtube: 40, soundcloud: 30 });
+  const tracks = $derived(done.flatMap((d) => d.tracks.slice(0, perSource[d.source])));
   const artists = $derived(done.flatMap((d) => d.artists).slice(0, kind === "all" ? 3 : 40));
   const albums = $derived(done.flatMap((d) => d.albums).slice(0, kind === "all" ? 4 : 40));
   const playlists = $derived(done.flatMap((d) => d.playlists).slice(0, kind === "all" ? 4 : 40));
@@ -94,10 +96,6 @@
     remember();
     close();
     ui.go({ name: "artist", artistId: id, artistName: name }, 0);
-  }
-
-  function onTrackActivity(list: Track[]) {
-    if (list.length) remember();
   }
 
   async function clearHistory() {
@@ -143,7 +141,8 @@
           </button>
         {/each}
       </div>
-      <div class="scroll" role="presentation" ondblclick={() => onTrackActivity(tracks)}>
+      <!-- Any click on a result means the query was useful, so it goes into the history. -->
+      <div class="scroll" role="presentation" onclick={remember}>
         {#if artists.length}
           {#each artists as a (a.source + a.id)}
             <button class="entity" onclick={() => openArtist(a.id, a.name)}>

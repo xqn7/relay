@@ -1,15 +1,13 @@
 <script lang="ts">
-  import { fade } from "svelte/transition";
   import { coverAt, proxiedCover } from "../api";
   import { dominantColors, neutralColors, toneForBackdrop, type Rgb } from "./colors";
 
   let { cover }: { cover: string | null } = $props();
 
-  interface Layer {
-    id: number;
-    colors: Rgb[];
-  }
-  let layers = $state<Layer[]>([{ id: 0, colors: neutralColors() }]);
+  // One set of blobs drifts forever; only their colors change. The colors are registered CSS
+  // properties (see tokens.css), so the browser blends old → new smoothly with no flash and
+  // without restarting the drift.
+  let colors = $state<Rgb[]>(neutralColors());
   let seq = 0;
 
   async function extract(url: string): Promise<Rgb[]> {
@@ -27,25 +25,24 @@
   $effect(() => {
     const url = cover;
     const id = ++seq;
-    const done = (colors: Rgb[]) => {
-      // Ignore results for covers the user already moved past.
-      if (id === seq) layers = [...layers.slice(-1), { id, colors }];
-    };
-    if (!url) done(neutralColors());
-    else extract(url).then(done, () => done(neutralColors()));
+    // Ignore results for covers the user already moved past.
+    const apply = (next: Rgb[]) => id === seq && (colors = next);
+    if (!url) apply(neutralColors());
+    else extract(url).then(apply, () => apply(neutralColors()));
   });
 
-  const rgba = (c: Rgb, a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
+  const css = (c: Rgb | undefined, a: number) => (c ? `rgba(${c[0]},${c[1]},${c[2]},${a})` : "transparent");
 </script>
 
-<div class="backdrop" aria-hidden="true">
-  {#each layers as layer (layer.id)}
-    <div class="layer" in:fade={{ duration: 550 }} out:fade={{ duration: 550 }}>
-      <div class="blob a" style:background="radial-gradient(closest-side, {rgba(layer.colors[0], 0.9)}, transparent)"></div>
-      <div class="blob b" style:background="radial-gradient(closest-side, {rgba(layer.colors[1] ?? layer.colors[0], 0.75)}, transparent)"></div>
-      <div class="blob c" style:background="radial-gradient(closest-side, {rgba(layer.colors[2] ?? layer.colors[0], 0.6)}, transparent)"></div>
-    </div>
-  {/each}
+<div
+  class="backdrop"
+  aria-hidden="true"
+  style:--bd-1={css(colors[0], 0.9)}
+  style:--bd-2={css(colors[1] ?? colors[0], 0.75)}
+  style:--bd-3={css(colors[2] ?? colors[0], 0.6)}>
+  <div class="blob a"></div>
+  <div class="blob b"></div>
+  <div class="blob c"></div>
   <div class="shade"></div>
 </div>
 
@@ -57,10 +54,10 @@
     overflow: hidden;
     background: var(--bg);
     pointer-events: none;
-  }
-  .layer {
-    position: absolute;
-    inset: 0;
+    transition:
+      --bd-1 600ms var(--ease),
+      --bd-2 600ms var(--ease),
+      --bd-3 600ms var(--ease);
   }
   .blob {
     position: absolute;
@@ -71,16 +68,19 @@
   .a {
     left: -18vw;
     top: -42vh;
+    background: radial-gradient(closest-side, var(--bd-1), transparent);
     animation: drift-a 46s ease-in-out infinite alternate;
   }
   .b {
     left: 30vw;
     top: -50vh;
+    background: radial-gradient(closest-side, var(--bd-2), transparent);
     animation: drift-b 58s ease-in-out infinite alternate;
   }
   .c {
     left: 62vw;
     top: -38vh;
+    background: radial-gradient(closest-side, var(--bd-3), transparent);
     animation: drift-c 52s ease-in-out infinite alternate;
   }
   /* The colors live at the top and melt into near-black, so lists stay calm and readable. */

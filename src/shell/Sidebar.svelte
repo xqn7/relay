@@ -1,28 +1,23 @@
 <script lang="ts">
   import logo from "../lib/assets/logo.svg";
   import Icon from "../lib/components/Icon.svelte";
-  import type { IconName } from "../lib/icons";
   import { t } from "../lib/i18n/index.svelte";
-  import { ui, type Route } from "../lib/stores/ui.svelte";
+  import { ui } from "../lib/stores/ui.svelte";
 
   let { scrollTop }: { scrollTop: () => number } = $props();
 
-  const items: { route: Route["name"]; icon: IconName; label: () => string }[] = [
-    { route: "home", icon: "home", label: () => t("nav.home") },
-    { route: "library", icon: "library", label: () => t("nav.library") },
-  ];
 </script>
 
 <nav class="sidebar">
   <div class="logo" data-tauri-drag-region><img src={logo} alt="Relay" width="30" height="30" draggable="false" /></div>
   <div class="rail">
-    <button class:active={ui.route.name === "home"} aria-label={items[0].label()} title={items[0].label()} onclick={() => ui.go({ name: "home" }, scrollTop())}>
+    <button class:active={ui.route.name === "home"} aria-label={t("nav.home")} title={t("nav.home")} onclick={() => ui.go({ name: "home" }, scrollTop())}>
       <Icon name="home" size={20} />
     </button>
     <button class:active={ui.searchOpen} aria-label={t("nav.search")} title={t("nav.search")} onclick={() => (ui.searchOpen = true)}>
       <Icon name="search" size={20} />
     </button>
-    <button class:active={ui.route.name === "library"} aria-label={items[1].label()} title={items[1].label()} onclick={() => ui.go({ name: "library" }, scrollTop())}>
+    <button class:active={ui.route.name === "library"} aria-label={t("nav.library")} title={t("nav.library")} onclick={() => ui.go({ name: "library" }, scrollTop())}>
       <Icon name="library" size={20} />
     </button>
   </div>

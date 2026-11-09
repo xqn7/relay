@@ -228,7 +228,7 @@ impl Source for SoundCloud {
             .filter(|u| u.starts_with("https://"))
             .ok_or_else(|| AppError::new("bad_response", "SoundCloud returned no stream URL"))?
             .to_string();
-        Ok(ResolvedStream { expires_at: url_expiry(&url), url, kind: pick.kind, mime: pick.mime, size: None, loudness_db: None })
+        Ok(ResolvedStream { expires_at: url_expiry(&url), url, kind: pick.kind, mime: pick.mime, size: None, loudness_db: None, user_agent: None })
     }
 
     async fn collection_tracks(&self, _kind: &str, id: &str) -> AppResult<Vec<Track>> {

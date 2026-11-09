@@ -128,6 +128,8 @@ pub struct ResolvedStream {
     pub size: Option<u64>,
     /// Relative loudness reported by the service (YouTube); used for normalization.
     pub loudness_db: Option<f32>,
+    /// Some stream URLs only work with the User-Agent of the client that requested them.
+    pub user_agent: Option<String>,
 }
 
 #[allow(async_fn_in_trait)]

@@ -4,7 +4,6 @@
 use crate::error::{AppError, AppResult};
 use crate::matcher;
 use crate::sources::{Quality, ResolvedStream, SearchKind, Source, StreamKind, Track, SOUNDCLOUD, YOUTUBE};
-use crate::tools;
 use crate::util::now_secs;
 use crate::AppState;
 use rusqlite::{params, OptionalExtension};
@@ -51,7 +50,7 @@ async fn resolve_inner(state: &AppState, track: &Track, quality: Quality, fresh:
     };
     let fallback = if track.source == YOUTUBE { SOUNDCLOUD } else { YOUTUBE };
     // A missing or Go+-only song is a fact about the song, not a broken service.
-    let service_broken = !matches!(native_err.code, "not_found" | "unavailable" | "preview_only");
+    let service_broken = !matches!(native_err.code, "not_found" | "unavailable" | "preview_only" | "helper_installing");
     emit_status(
         state,
         SourceStatus {
@@ -79,14 +78,7 @@ async fn native_stream(state: &AppState, track: &Track, quality: Quality, fresh:
         }
     }
     let result = match track.source.as_str() {
-        YOUTUBE => match state.yt.resolve(track, quality).await {
-            Ok(s) => Ok(s),
-            // rustypipe can lag behind YouTube changes; yt-dlp usually catches up faster.
-            Err(e) if !matches!(e.code, "not_found" | "unavailable") => {
-                tools::ytdlp_stream(state, &track.source_id).await.map_err(|_| e)
-            }
-            Err(e) => Err(e),
-        },
+        YOUTUBE => state.yt.resolve(track, quality).await,
         SOUNDCLOUD => state.sc.resolve(track, quality).await,
         _ => Err(AppError::new("invalid_input", "unknown source")),
     }?;
@@ -112,7 +104,7 @@ fn cached_stream(state: &AppState, track_id: &str) -> AppResult<Option<ResolvedS
     let min_expiry = now_secs() + 60;
     state.db.with(|c| {
         c.query_row(
-            "SELECT url,kind,mime,expires_at,size,loudness_db FROM stream_cache WHERE track_id=?1 AND expires_at>?2",
+            "SELECT url,kind,mime,expires_at,size,loudness_db,user_agent FROM stream_cache WHERE track_id=?1 AND expires_at>?2",
             params![track_id, min_expiry],
             |r| {
                 let kind: String = r.get(1)?;
@@ -123,6 +115,7 @@ fn cached_stream(state: &AppState, track_id: &str) -> AppResult<Option<ResolvedS
                     expires_at: r.get(3)?,
                     size: r.get::<_, Option<i64>>(4)?.map(|s| s as u64),
                     loudness_db: r.get::<_, Option<f64>>(5)?.map(|l| l as f32),
+                    user_agent: r.get(6)?,
                 })
             },
         )
@@ -134,9 +127,9 @@ fn store_stream(state: &AppState, track_id: &str, s: &ResolvedStream) -> AppResu
     let kind = if s.kind == StreamKind::Hls { "hls" } else { "direct" };
     state.db.with(|c| {
         c.execute(
-            "INSERT OR REPLACE INTO stream_cache(track_id,url,kind,mime,origin_id,expires_at,size,loudness_db)
-             VALUES(?1,?2,?3,?4,?1,?5,?6,?7)",
-            params![track_id, s.url, kind, s.mime, s.expires_at, s.size.map(|x| x as i64), s.loudness_db.map(f64::from)],
+            "INSERT OR REPLACE INTO stream_cache(track_id,url,kind,mime,origin_id,expires_at,size,loudness_db,user_agent)
+             VALUES(?1,?2,?3,?4,?1,?5,?6,?7,?8)",
+            params![track_id, s.url, kind, s.mime, s.expires_at, s.size.map(|x| x as i64), s.loudness_db.map(f64::from), s.user_agent],
         )
     })?;
     Ok(())

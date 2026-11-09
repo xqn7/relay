@@ -28,7 +28,6 @@
 </script>
 
 <footer class="bar glass">
-  <div class="progress-fill" style:width="{progress * 100}%"></div>
   {#if track}
     <div class="seek">
       <Slider
@@ -83,7 +82,7 @@
       onclick={() => player.cycleRepeat()} />
     <div class="volume" role="group" onmouseenter={() => (volumeOpen = true)} onmouseleave={() => (volumeOpen = false)} onwheel={wheelVolume}>
       {#if volumeOpen}
-        <div class="volume-pop glass">
+        <div class="volume-pop">
           <Slider label={t("player.volume")} value={player.muted ? 0 : player.volume} oninput={(v) => player.setVolume(v)} onchange={(v) => player.setVolume(v)} />
         </div>
       {/if}
@@ -108,15 +107,6 @@
     padding: 0 var(--s3);
     border-radius: var(--r-lg);
     background: rgba(20, 20, 22, 0.55);
-  }
-  .progress-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    bottom: 0;
-    border-radius: var(--r-lg) 0 0 var(--r-lg);
-    background: rgba(255, 255, 255, 0.035);
-    pointer-events: none;
   }
   .seek {
     position: absolute;
@@ -208,7 +198,9 @@
     width: 140px;
     padding: 10px 14px;
     border-radius: var(--r-md);
-    background: rgba(24, 24, 27, 0.8);
+    border: 1px solid var(--hairline);
+    /* Solid, not blurred: a blur nested inside the bar's own blur renders with artifacts. */
+    background: rgb(28, 28, 31);
   }
   .volume-pop::after {
     content: "";

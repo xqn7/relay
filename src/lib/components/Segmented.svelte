@@ -10,7 +10,7 @@
 
 <div class="seg {size}" role="radiogroup" aria-label={label}>
   {#each options as opt (opt.value)}
-    <button role="radio" aria-checked={opt.value === value} class:on={opt.value === value} onclick={() => onchange(opt.value)}>{opt.label}</button>
+    <button type="button" role="radio" aria-checked={opt.value === value} class:on={opt.value === value} onclick={() => onchange(opt.value)}>{opt.label}</button>
   {/each}
 </div>
 
