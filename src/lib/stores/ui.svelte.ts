@@ -9,6 +9,7 @@ export type Route =
   | { name: "playlist"; id: string }
   | { name: "liked" }
   | { name: "local" }
+  | { name: "offline" }
   | { name: "folder"; id: string }
   | { name: "trash" }
   | { name: "album"; source: SearchSource; id: string }

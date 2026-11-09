@@ -1,5 +1,6 @@
 mod accounts;
 mod audio_devices;
+mod backup;
 mod commands;
 mod covers;
 mod db;
@@ -13,8 +14,11 @@ mod m3u;
 mod matcher;
 mod matching;
 mod media;
+mod network;
 mod resolver;
 mod sources;
+mod storage;
+mod storage_commands;
 mod streams;
 mod tools;
 mod util;
@@ -44,6 +48,8 @@ pub struct AppState {
     pub tools: Arc<Tools>,
     pub local: local::LocalMusic,
     pub imports: importer::Imports,
+    pub storage: storage::Storage,
+    pub net: network::Network,
     pub artist_cache: Mutex<HashMap<String, (Instant, sources::ArtistPage)>>,
 }
 
@@ -86,6 +92,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let state = AppState {
         local: local::LocalMusic::new(&handle, &db)?,
         imports: importer::Imports::default(),
+        storage: storage::Storage::new(&local_dir)?,
+        net: network::Network::new(),
         artist_cache: Mutex::new(HashMap::new()),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
@@ -101,7 +109,23 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(state);
     app.manage(state.clone());
     audio_devices::watch(handle.clone());
+    network::watch(&handle);
     tauri::async_runtime::spawn(local::start(state.clone()));
+    {
+        // Startup housekeeping for stored songs, then continue any unfinished downloads.
+        let state = state.clone();
+        tauri::async_runtime::spawn(async move {
+            let s = state.clone();
+            let _ = tokio::task::spawn_blocking(move || {
+                storage::tidy(&s);
+                storage::enforce_cache_limit(&s);
+            })
+            .await;
+            network::probe(&state, true).await;
+            storage::sync(&state);
+            backup::schedule(&state);
+        });
+    }
 
     // Closing asks the UI to save the queue and position first; if the UI doesn't answer
     // within a moment (e.g. it crashed), quit anyway.
@@ -235,6 +259,27 @@ pub fn run() {
             library_commands::local_folder,
             library_commands::local_folder_pick,
             library_commands::local_open_folder,
+            storage_commands::offline_marks,
+            storage_commands::offline_set,
+            storage_commands::playlist_offline_set,
+            storage_commands::offline_sync,
+            storage_commands::storage_available,
+            storage_commands::offline_lists,
+            storage_commands::download_status,
+            storage_commands::storage_usage,
+            storage_commands::storage_clear,
+            storage_commands::storage_open,
+            storage_commands::net_status,
+            storage_commands::net_check,
+            storage_commands::connection_check,
+            storage_commands::backup_create,
+            storage_commands::backup_restore,
+            storage_commands::backup_folder_pick,
+            storage_commands::cover_hd,
+            storage_commands::cover_save,
+            storage_commands::cover_drag_prepare,
+            storage_commands::cover_drag_start,
+            storage_commands::local_use_hd_cover,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

@@ -208,6 +208,33 @@ export interface TrashEntry {
   deletedAt: number;
 }
 
+export interface Usage {
+  downloadsBytes: number;
+  downloadsCount: number;
+  likedBytes: number;
+  importedBytes: number;
+  cacheSongsBytes: number;
+  cacheSongsCount: number;
+  artworkBytes: number;
+  freeBytes: number | null;
+  averageSongBytes: number;
+}
+
+export interface DownloadStatus {
+  active: boolean;
+  done: number;
+  total: number;
+  full: boolean;
+  failed: number;
+}
+
+export interface ConnectionCheck {
+  id: "internet" | "youtube" | "soundcloud" | "spotify" | "covers" | "lyrics";
+  ok: boolean;
+  code: string;
+  detail: string;
+}
+
 /** Error shape returned by every failing command. */
 export interface AppError {
   code: string;
@@ -327,7 +354,42 @@ export const api = {
   localFolder: () => invoke<string>("local_folder"),
   localFolderPick: () => invoke<string | null>("local_folder_pick"),
   localOpenFolder: () => invoke<void>("local_open_folder"),
+
+  offlineMarks: () => invoke<{ songs: string[]; playlists: string[] }>("offline_marks"),
+  offlineSet: (tracks: Track[], on: boolean) => invoke<void>("offline_set", { tracks: tracks.map(plain), on }),
+  playlistOfflineSet: (id: string, on: boolean) => invoke<void>("playlist_offline_set", { id, on }),
+  offlineSync: () => invoke<void>("offline_sync"),
+  storageAvailable: () => invoke<{ downloaded: string[]; cached: string[] }>("storage_available"),
+  offlineLists: () => invoke<{ downloaded: Track[]; cached: Track[] }>("offline_lists"),
+  downloadStatus: () => invoke<DownloadStatus>("download_status"),
+  storageUsage: () => invoke<Usage>("storage_usage"),
+  storageClear: (what: "songs" | "artwork" | "downloads") => invoke<void>("storage_clear", { what }),
+  storageOpen: (what: "downloads" | "cache") => invoke<void>("storage_open", { what }),
+  netStatus: () => invoke<boolean>("net_status"),
+  netCheck: () => invoke<boolean>("net_check"),
+  connectionCheck: () => invoke<ConnectionCheck[]>("connection_check"),
+  backupCreate: () => invoke<boolean>("backup_create"),
+  backupRestore: () => invoke<number>("backup_restore"),
+  backupFolderPick: () => invoke<string | null>("backup_folder_pick"),
+  coverHd: (track: Track) => invoke<string | null>("cover_hd", { track: plain(track) }),
+  coverSave: (url: string, name: string) => invoke<boolean>("cover_save", { url, name }),
+  coverDragPrepare: (url: string, name: string) => invoke<void>("cover_drag_prepare", { url, name }),
+  coverDragStart: () => invoke<void>("cover_drag_start"),
+  localUseHdCover: (track: Track) => invoke<void>("local_use_hd_cover", { track: plain(track) }),
 };
+
+/** "1.2 GB", "340 MB". */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = Math.max(0, bytes);
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  const digits = i >= 3 && v < 10 ? 1 : 0;
+  return `${v.toFixed(digits)} ${units[i]}`;
+}
 
 export function artistLine(t: Pick<Track, "artists">): string {
   return t.artists.map((a) => a.name).join(", ");
@@ -336,7 +398,7 @@ export function artistLine(t: Pick<Track, "artists">): string {
 /** Through the app's cover proxy, which adds the CORS headers needed to read pixels. */
 export function proxiedCover(url: string): string {
   // Local music covers are served by the app itself, already with CORS headers.
-  if (url.startsWith("http://relay.localhost/")) return url;
+  if (url.startsWith("http://relay.localhost/") || !url.startsWith("https://")) return url;
   return `http://relay.localhost/img/${encodeURIComponent(url)}`;
 }
 

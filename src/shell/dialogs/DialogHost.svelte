@@ -1,5 +1,6 @@
 <script lang="ts">
   import { dialogs } from "../../lib/stores/dialogs.svelte";
+  import ConnectionDialog from "./ConnectionDialog.svelte";
   import EditLocalDialog from "./EditLocalDialog.svelte";
   import FixMatchDialog from "./FixMatchDialog.svelte";
   import ImportDialog from "./ImportDialog.svelte";
@@ -27,6 +28,8 @@
       <EditLocalDialog track={d.track} />
     {:else if d.kind === "merge"}
       <MergeDialog playlistId={d.playlistId} />
+    {:else if d.kind === "connection"}
+      <ConnectionDialog />
     {/if}
   {/key}
 {/if}

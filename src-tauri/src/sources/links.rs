@@ -54,7 +54,7 @@ pub fn parse(input: &str) -> Option<Link> {
     let url = format!("https://{without_scheme}");
 
     if let Some((_, service)) = SHORT_HOSTS.iter().find(|(h, _)| *h == host) {
-        return (!segs.is_empty()).then(|| Link::Short { service, url });
+        return (!segs.is_empty()).then_some(Link::Short { service, url });
     }
     match host {
         "open.spotify.com" | "play.spotify.com" => parse_spotify_path(&segs),

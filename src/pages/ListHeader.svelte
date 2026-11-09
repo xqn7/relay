@@ -1,6 +1,7 @@
 <!-- Header of every song list page: playlist, Liked Songs, Local music, album. -->
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import { coverDrag, openCoverMenu } from "../lib/coverActions";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import type { IconName } from "../lib/icons";
@@ -29,7 +30,9 @@
 <header>
   <div class="art">
     {#if cover}
-      <Cover src={cover} size={168} radius={12} />
+      <div class="cover" role="img" aria-label={title} oncontextmenu={(e) => openCoverMenu(e, cover, title)} use:coverDrag={{ url: cover, name: title }}>
+        <Cover src={cover} size={168} radius={12} />
+      </div>
     {:else}
       <div class="icon"><Icon name={icon} size={56} strokeWidth={1.6} /></div>
     {/if}
@@ -67,6 +70,9 @@
     flex: none;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     border-radius: 12px;
+  }
+  .cover {
+    cursor: grab;
   }
   .icon {
     display: grid;

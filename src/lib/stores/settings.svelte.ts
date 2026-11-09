@@ -10,12 +10,21 @@ export const defaults = {
   crossfade: 3,
   normalize: true,
   quality: "best" as "best" | "dataSaver",
+  /** GB; 0 = no limit. */
+  maxCacheGb: 3,
+  downloadLimitGb: 5,
+  autoDownloadLiked: false,
+  showCachedInLibrary: true,
+  autoBackup: false,
+  backupFolder: "",
 };
 
 export type Settings = typeof defaults;
 export type SettingKey = keyof Settings;
 
-const DEVICE_KEYS = new Set<SettingKey>([]);
+const DEVICE_KEYS = new Set<SettingKey>(["maxCacheGb", "downloadLimitGb", "autoDownloadLiked", "showCachedInLibrary", "autoBackup", "backupFolder"]);
+export const CACHE_SIZES = [1, 3, 10, 0];
+export const DOWNLOAD_SIZES = [2, 5, 20, 0];
 
 function valid<K extends SettingKey>(key: K, value: unknown): value is Settings[K] {
   const d = defaults[key];
@@ -24,6 +33,9 @@ function valid<K extends SettingKey>(key: K, value: unknown): value is Settings[
   if (key === "doubleClick") return value === "play" || value === "queue";
   if (key === "startup") return value === "resume" || value === "empty";
   if (key === "quality") return value === "best" || value === "dataSaver";
+  if (key === "maxCacheGb") return CACHE_SIZES.includes(value as number);
+  if (key === "downloadLimitGb") return DOWNLOAD_SIZES.includes(value as number);
+  if (key === "backupFolder") return typeof value === "string" && value.length < 1024;
   return true;
 }
 

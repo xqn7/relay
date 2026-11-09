@@ -1,11 +1,13 @@
 // The song menu (⋮ button and right-click on any song). With several songs selected, the
 // actions that make sense for many songs apply to all of them.
 import { api, IMPORT_ONLY, type Track } from "./api";
+import { saveTrackCover } from "./coverActions";
 import { t } from "./i18n/index.svelte";
 import { hasAlbumPage, openAlbum, openArtist } from "./navigate";
 import { dialogs } from "./stores/dialogs.svelte";
 import { fail, library } from "./stores/library.svelte";
 import { menu, type MenuItem } from "./stores/menu.svelte";
+import { offline } from "./stores/offline.svelte";
 import { player } from "./stores/player.svelte";
 import { ui } from "./stores/ui.svelte";
 
@@ -80,6 +82,16 @@ export function trackMenuItems(ctx: MenuContext): MenuItem[] {
     items.push({ label: t("menu.removeFromPlaylist"), icon: "close", action: () => removeFromPlaylist(pl.id, pl.itemIds, pl.onRemoved) });
   }
 
+  const remote = targets.filter((x) => x.source !== "local");
+  if (remote.length > 0) {
+    const allSaved = remote.every((x) => offline.isSaved(x));
+    items.push({
+      label: allSaved ? t("offline.unsaveSong") : t("offline.saveSong"),
+      icon: "download",
+      action: () => offline.setSaved(remote, !allSaved),
+    });
+  }
+
   if (many) {
     items.push({
       label: t("menu.likeAll"),
@@ -110,6 +122,7 @@ export function trackMenuItems(ctx: MenuContext): MenuItem[] {
       if (track.link) navigator.clipboard.writeText(track.link).then(() => ui.toast(t("toast.linkCopied"), "check"));
     },
   });
+  items.push({ label: t("cover.save"), icon: "image", disabled: !track.cover, action: () => saveTrackCover(track) });
 
   if (IMPORT_ONLY.has(track.source)) {
     items.push({ label: t("menu.fixMatch"), icon: "replace", divider: true, action: () => dialogs.open({ kind: "fixMatch", track }) });
@@ -117,6 +130,7 @@ export function trackMenuItems(ctx: MenuContext): MenuItem[] {
   if (track.source === "local") {
     items.push(
       { label: t("menu.editInfo"), icon: "pencil", divider: true, action: () => dialogs.open({ kind: "editLocal", track }) },
+      { label: t("cover.useHd"), icon: "image", action: () => useHdCover(track) },
       { label: t("menu.removeLocal"), icon: "trash", action: () => removeLocal(track) },
     );
   }
@@ -157,6 +171,19 @@ async function removeFromPlaylist(id: string, itemIds: string[], onRemoved: () =
     });
   } catch (e) {
     fail(e);
+  }
+}
+
+async function useHdCover(track: Track): Promise<void> {
+  const id = ui.toast(t("cover.lookingUp"), "image");
+  try {
+    await api.localUseHdCover(track);
+    ui.dismiss(id);
+    ui.toast(t("cover.hdSaved"), "check");
+  } catch (e) {
+    ui.dismiss(id);
+    if (typeof e === "object" && e && "code" in e && e.code === "not_found") ui.toast(t("cover.noHd"), "info");
+    else fail(e);
   }
 }
 

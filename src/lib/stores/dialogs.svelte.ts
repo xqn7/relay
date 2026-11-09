@@ -9,7 +9,8 @@ export type Dialog =
   | { kind: "report"; title: string; playlistId: string | null; unmatched: Track[]; skipped: Skipped[]; truncated: boolean }
   | { kind: "fixMatch"; track: Track }
   | { kind: "editLocal"; track: Track }
-  | { kind: "merge"; playlistId: string };
+  | { kind: "merge"; playlistId: string }
+  | { kind: "connection" };
 
 class DialogStore {
   current = $state<Dialog | null>(null);

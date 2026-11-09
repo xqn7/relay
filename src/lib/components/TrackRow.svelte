@@ -2,6 +2,7 @@
   import { formatTime, type Track } from "../api";
   import { t } from "../i18n/index.svelte";
   import { openArtist, playsFrom } from "../navigate";
+  import { offline } from "../stores/offline.svelte";
   import { player } from "../stores/player.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
@@ -33,6 +34,8 @@
 
   const isCurrent = $derived(player.current?.track.id === track.id);
   const unmatched = $derived(track.via === "none");
+  const unavailable = $derived(!offline.online && !offline.isAvailable(track));
+  const downloaded = $derived(track.source !== "local" && offline.downloaded.has(track.id));
 
   function onKey(e: KeyboardEvent) {
     if (e.key === "Enter") onactivate();
@@ -49,7 +52,7 @@
   class:current={isCurrent}
   class:selected
   class:compact
-  class:dim={unmatched || hidden}
+  class:dim={unmatched || hidden || unavailable}
   class:with-album={showAlbum}
   role="button"
   tabindex="0"
@@ -69,6 +72,7 @@
     <div class="title truncate">{track.title}</div>
     <div class="artist">
       <SourceBadge source={playsFrom(track)} />
+      {#if downloaded}<span class="saved" title={t("offline.downloaded")}><Icon name="download" size={12} /></span>{/if}
       <span class="truncate">
         {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="link" tabindex="-1" onclick={(e) => artistClick(e, i)}>{a.name}</button>{/each}
         {#if unmatched}<span class="note"> · {t("track.noMatch")}</span>{/if}
@@ -155,6 +159,16 @@
   }
   .note {
     color: var(--text-3);
+  }
+  .saved {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    color: var(--text);
   }
   .album {
     font-size: var(--fs-sm);

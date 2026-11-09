@@ -5,6 +5,7 @@ import { listen } from "@tauri-apps/api/event";
 import { api, artistLine, isAppError, type Followed, type Hidden, type Overview, type Track } from "../api";
 import { t } from "../i18n/index.svelte";
 import { fold } from "../text";
+import { offline } from "./offline.svelte";
 import { ui } from "./ui.svelte";
 
 const emptyOverview: Overview = { playlists: [], folders: [], likedCount: 0, followsCount: 0 };
@@ -31,6 +32,8 @@ class LibraryStore {
     this.hidden = hidden;
     this.follows = follows;
     this.version += 1;
+    // New likes or playlist songs may need downloading (saved playlists, Liked Songs).
+    offline.sync();
   }
 
   reset(): void {
@@ -54,6 +57,7 @@ class LibraryStore {
       await api.likeSet(track, on);
       this.overview = { ...this.overview, likedCount: this.overview.likedCount + (on ? 1 : -1) };
       this.version += 1;
+      offline.sync();
     } catch (e) {
       this.liked = new Set(on ? [...next].filter((id) => id !== track.id) : [...next, track.id]);
       fail(e);

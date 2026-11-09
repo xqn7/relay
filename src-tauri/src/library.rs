@@ -653,7 +653,7 @@ pub fn trash(db: &Db, account: &str) -> AppResult<Vec<TrashEntry>> {
                 out.push(TrashEntry { kind: "local".into(), id, detail: t.artist_line(), name: t.title, deleted_at: at });
             }
         }
-        out.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
+        out.sort_by_key(|e| std::cmp::Reverse(e.deleted_at));
         Ok(out)
     })
 }

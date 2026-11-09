@@ -112,7 +112,16 @@ pub fn setting_set(state: St, scope: String, key: String, value: Value) -> AppRe
         return Err(AppError::new("invalid_input", "setting too large"));
     }
     match scope.as_str() {
-        "device" => state.db.device_set(&format!("pref.{key}"), &json),
+        "device" => {
+            state.db.device_set(&format!("pref.{key}"), &json)?;
+            match key.as_str() {
+                "maxCacheGb" => crate::storage::enforce_cache_limit(&state),
+                "downloadLimitGb" | "autoDownloadLiked" => crate::storage::sync(state.inner()),
+                "autoBackup" | "backupFolder" => crate::backup::schedule(state.inner()),
+                _ => {}
+            }
+            Ok(())
+        }
         "account" => {
             let account = current(&state)?;
             state.db.with(|c| {

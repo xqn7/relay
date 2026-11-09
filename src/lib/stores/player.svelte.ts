@@ -5,7 +5,9 @@ import { api, artistLine, IMPORT_ONLY, isAppError, type Prepared, type Track } f
 import { AudioEngine } from "../audio/engine";
 import { t } from "../i18n/index.svelte";
 import * as Q from "../player/queue";
+import { dialogs } from "./dialogs.svelte";
 import { library } from "./library.svelte";
+import { offline } from "./offline.svelte";
 import { settings } from "./settings.svelte";
 import { ui } from "./ui.svelte";
 
@@ -94,7 +96,10 @@ class Player {
       const last = this.sourceToastAt.get(payload.source) ?? 0;
       if (Date.now() - last < SOURCE_TOAST_COOLDOWN_MS) return;
       this.sourceToastAt.set(payload.source, Date.now());
-      ui.toast(t("toast.sourceFailing", { source: sourceLabel(payload.source), other: sourceLabel(payload.fallback) }), "alert");
+      ui.toast(t("toast.sourceFailing", { source: sourceLabel(payload.source), other: sourceLabel(payload.fallback) }), "alert", {
+        label: t("offline.details"),
+        run: () => dialogs.open({ kind: "connection" }),
+      });
     });
     await listen("app-closing", async () => {
       await this.saveNow().catch(() => {});
@@ -212,7 +217,7 @@ class Player {
   /** Every queue change goes through here: it saves, and drops a preload that no longer fits. */
   private setQueue(q: Q.QueueState): void {
     this.queue = q;
-    const expected = Q.nextIndex(q, true, this.skipHidden);
+    const expected = Q.nextIndex(q, true, this.skipItem);
     const expectedUid = expected == null ? null : q.items[expected]?.uid;
     if (this.preloadedUid && this.preloadedUid !== expectedUid) {
       this.engine.clearNext();
@@ -302,6 +307,7 @@ class Player {
     this.positionMs = startMs;
     this.durationMs = item.track.durationMs ?? 0;
     api.mediaTrack(mediaInfo(item.track)).catch(() => {});
+    this.warmCover(item.track);
     try {
       const prepared = await this.prepare(item.track);
       if (token !== this.loadToken) return;
@@ -336,8 +342,18 @@ class Player {
         : code === "nothing_playable"
           ? t("toast.nothingPlayable", { title: item.track.title })
           : t("toast.skipped", { title: item.track.title });
-    ui.toast(text, "alert");
     this.playing = false;
+    if (code === "offline" && !offline.online) {
+      // Offline mode: go on with the next song that is on this PC. The offline toast
+      // already explained why songs are passed over.
+      const i = Q.nextIndex(this.queue, true, this.skipItem);
+      if (i != null && i !== this.queue.index) {
+        this.setQueue({ ...this.queue, index: i });
+        this.loadCurrent(true);
+      } else ui.toast(t("offline.nothingLeft"), "alert");
+      return;
+    }
+    ui.toast(text, "alert");
     this.failsInARow += 1;
     if (code === "offline" || code === "network" || this.failsInARow >= MAX_FAILS_IN_A_ROW) {
       this.failsInARow = 0;
@@ -353,20 +369,27 @@ class Player {
 
   /** Tells the backend to start downloading the next song now, so it's ready in time. */
   private prefetchFollowing(): void {
-    const i = Q.nextIndex(this.queue, true, this.skipHidden);
+    const i = Q.nextIndex(this.queue, true, this.skipItem);
     const next = i == null ? null : this.queue.items[i];
     if (next && next.uid !== this.current?.uid) api.prefetchTrack(next.track, settings.values.quality).catch(() => {});
     const imported = this.upcoming.slice(0, PREMATCH_AHEAD).map((x) => x.track).filter((x) => IMPORT_ONLY.has(x.source) && !x.via);
     if (imported.length) api.prematch(imported).catch(() => {});
   }
 
-  private skipHidden = (item: Q.QueueItem): boolean => library.isHidden(item.track);
+  /** Passed over when the queue moves on by itself: hidden songs, and while offline, songs
+   * that aren't on this PC. */
+  private skipItem = (item: Q.QueueItem): boolean => library.isHidden(item.track) || (!offline.online && !offline.isAvailable(item.track));
+
+  /** Looks up a sharper cover in the background, so it is cached when a big view needs it. */
+  private warmCover(track: Track): void {
+    if (offline.online) api.coverHd(track).catch(() => {});
+  }
 
   private async preloadNext(): Promise<void> {
-    let i = Q.nextIndex(this.queue, true, this.skipHidden);
-    if (i == null && settings.values.autoplay && this.queue.repeat === "off") {
+    let i = Q.nextIndex(this.queue, true, this.skipItem);
+    if (i == null && settings.values.autoplay && this.queue.repeat === "off" && offline.online) {
       await this.extendWithAutoplay();
-      i = Q.nextIndex(this.queue, true, this.skipHidden);
+      i = Q.nextIndex(this.queue, true, this.skipItem);
     }
     if (i == null) return;
     const item = this.queue.items[i];
@@ -374,7 +397,7 @@ class Player {
     try {
       const prepared = await this.prepare(item.track);
       // The queue may have changed while we waited; only preload if this is still next.
-      if (token !== this.loadToken || Q.nextIndex(this.queue, true, this.skipHidden) !== this.queue.items.indexOf(item)) return;
+      if (token !== this.loadToken || Q.nextIndex(this.queue, true, this.skipItem) !== this.queue.items.indexOf(item)) return;
       this.engine.preloadNext(prepared.url, prepared.loudnessDb);
       this.preloadedUid = item.uid;
     } catch {
@@ -427,13 +450,14 @@ class Player {
     this.durationMs = item.track.durationMs ?? 0;
     this.retriedUid = null;
     api.mediaTrack(mediaInfo(item.track)).catch(() => {});
+    this.warmCover(item.track);
     this.prefetchFollowing();
   }
 
   private async onEnded(): Promise<void> {
-    let i = Q.nextIndex(this.queue, true, this.skipHidden);
-    if (i == null && settings.values.autoplay && this.queue.repeat === "off" && (await this.extendWithAutoplay())) {
-      i = Q.nextIndex(this.queue, true, this.skipHidden);
+    let i = Q.nextIndex(this.queue, true, this.skipItem);
+    if (i == null && settings.values.autoplay && this.queue.repeat === "off" && offline.online && (await this.extendWithAutoplay())) {
+      i = Q.nextIndex(this.queue, true, this.skipItem);
     }
     if (i == null) {
       this.playing = false;

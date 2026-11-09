@@ -97,6 +97,10 @@ impl Tools {
         self.dir.join(YTDLP_EXE)
     }
 
+    pub fn ytdlp_ready(&self) -> bool {
+        self.ytdlp_path().exists()
+    }
+
     /// Starts downloading yt-dlp in the background if it's missing. YouTube is the main
     /// catalog, so it's needed for almost the first song; fetching it early keeps that song fast.
     pub fn warm_up(self: &Arc<Self>) {

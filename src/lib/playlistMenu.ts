@@ -4,6 +4,7 @@ import { t } from "./i18n/index.svelte";
 import { dialogs } from "./stores/dialogs.svelte";
 import { fail, library } from "./stores/library.svelte";
 import { menu, type MenuItem } from "./stores/menu.svelte";
+import { offline } from "./stores/offline.svelte";
 import { player } from "./stores/player.svelte";
 import { ui } from "./stores/ui.svelte";
 
@@ -46,6 +47,12 @@ export function playlistMenuItems(p: PlaylistSummary): MenuItem[] {
           confirm: t("dialog.save"),
           onConfirm: (name) => api.playlistRename(p.id, name).then(() => library.refresh()).catch(fail),
         }),
+    },
+    {
+      label: offline.savedPlaylists.has(p.id) ? t("offline.unsavePlaylist") : t("offline.save"),
+      icon: "download",
+      disabled: p.count === 0 && !offline.savedPlaylists.has(p.id),
+      action: () => offline.setPlaylistSaved(p.id, !offline.savedPlaylists.has(p.id)),
     },
     { label: t("playlist.mergeWith"), icon: "merge", action: () => dialogs.open({ kind: "merge", playlistId: p.id }) },
     { label: t("playlist.moveToFolder"), icon: "folder", submenu: true, action: () => menu.replace(folderTargets(p)) },

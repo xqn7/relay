@@ -186,7 +186,7 @@ pub async fn followed_releases(state: St<'_>) -> AppResult<Vec<Releases>> {
         set.spawn(async move {
             let _permit = sem.acquire_owned().await.ok();
             let page = cached_artist(&state, &f.source, &f.artist_id).await;
-            let releases = page.as_ref().map(|p| latest(p)).unwrap_or_default();
+            let releases = page.as_ref().map(latest).unwrap_or_default();
             (i, Releases { failed: page.is_err(), artist: f, releases })
         });
     }
@@ -200,7 +200,7 @@ pub async fn followed_releases(state: St<'_>) -> AppResult<Vec<Releases>> {
 
 fn latest(p: &ArtistPage) -> Vec<Collection> {
     let mut all: Vec<Collection> = p.albums.iter().chain(&p.singles).cloned().collect();
-    all.sort_by(|a, b| b.year.cmp(&a.year));
+    all.sort_by_key(|c| std::cmp::Reverse(c.year));
     all.truncate(6);
     all
 }
@@ -395,6 +395,9 @@ pub fn match_set(state: St, track: Track, matched: Track) -> AppResult<()> {
     }
     library::set_match(&state.db, &track.source, &track.source_id, Some(&matched), true, 1.0)?;
     state.streams.forget(&track.id);
+    // The stored audio is the old match; a saved song downloads again with the new one.
+    crate::storage::discard(&state, &track.id);
+    crate::storage::sync(state.inner());
     Ok(())
 }
 

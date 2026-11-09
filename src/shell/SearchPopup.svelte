@@ -8,6 +8,7 @@
   import TrackList from "../lib/components/TrackList.svelte";
   import type { IconName } from "../lib/icons";
   import { t } from "../lib/i18n/index.svelte";
+  import { offline } from "../lib/stores/offline.svelte";
   import { player, sourceLabel } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
@@ -124,6 +125,9 @@
   </div>
 
   <div class="results glass">
+    {#if !offline.online}
+      <button class="status offline" onclick={() => ui.open({ name: "offline" })}><Icon name="cloud" size={16} />{t("offline.search")}</button>
+    {/if}
     {#if !query.trim()}
       {#if history.length}
         <div class="head">
@@ -357,6 +361,17 @@
     padding: 10px 8px;
     font-size: var(--fs-sm);
     color: var(--text-2);
+  }
+  .status.offline {
+    width: 100%;
+    border: 0;
+    border-radius: var(--r-md);
+    background: var(--glass-strong);
+    font: inherit;
+    font-size: var(--fs-sm);
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
   }
   .hint {
     margin: 10px 8px;

@@ -1,7 +1,8 @@
 //! Downloads each song to a file in the background and serves it to the webview through the
 //! `relay://` protocol with HTTP Range support. Serving from a local file means an expiring
 //! upstream URL can be refreshed mid-download without the player noticing, HLS can be joined
-//! into one file, and replays never touch the network.
+//! into one file, and replays never touch the network. Finished downloads move into the song
+//! cache or the downloads folder (see storage.rs), and later plays are served from there.
 
 use crate::error::{AppError, AppResult};
 use crate::resolver::{self, Resolution};
@@ -10,6 +11,7 @@ use crate::AppState;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::http::{header, Request, Response, StatusCode};
@@ -39,11 +41,13 @@ pub struct Progress {
 pub struct Buffer {
     pub played: Track,
     pub stand_in: bool,
-    /// False for Local music files, which are served in place and must never be deleted.
-    owned: bool,
+    /// True while the file is a download in progress that belongs to this buffer. Local music
+    /// files and finished songs (kept by the cache or downloads) are never deleted here.
+    owned: AtomicBool,
     pub mime: String,
     pub loudness_db: Option<f32>,
-    path: PathBuf,
+    /// Changes once, when the finished file moves into the cache or the downloads folder.
+    path: Mutex<PathBuf>,
     progress: watch::Sender<Progress>,
     task: Mutex<Option<AbortHandle>>,
     last_used: Mutex<Instant>,
@@ -56,6 +60,28 @@ impl Buffer {
     fn touch(&self) {
         *self.last_used.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
     }
+    fn path(&self) -> PathBuf {
+        self.path.lock().unwrap_or_else(|p| p.into_inner()).clone()
+    }
+
+    /// Waits until the whole song is on disk.
+    pub async fn wait_done(&self) -> AppResult<()> {
+        let mut rx = self.progress.subscribe();
+        loop {
+            {
+                let p = rx.borrow_and_update();
+                if let Some(e) = &p.failed {
+                    return Err(e.clone());
+                }
+                if p.done {
+                    return Ok(());
+                }
+            }
+            if rx.changed().await.is_err() {
+                return Err(AppError::new("internal", "download stopped"));
+            }
+        }
+    }
 }
 
 pub struct Streams {
@@ -64,7 +90,7 @@ pub struct Streams {
 }
 
 impl Streams {
-    /// Buffers only live for one run (the song cache arrives in Phase 3), so leftovers go.
+    /// The buffer folder only holds downloads in progress, so leftovers from the last run go.
     pub fn new(dir: PathBuf) -> std::io::Result<Self> {
         std::fs::create_dir_all(&dir)?;
         let streams = Self { dir, buffers: Mutex::new(HashMap::new()) };
@@ -99,9 +125,28 @@ impl Streams {
         }
     }
 
+    /// Drops every buffer (after a restore, when matches may have changed).
+    pub fn forget_all(&self) {
+        let old: Vec<Arc<Buffer>> = self.lock().drain().map(|(_, b)| b).collect();
+        for b in old {
+            drop_buffer(&b);
+        }
+    }
+
+    /// Songs with a buffer in memory; the cache never evicts these while they may be playing.
+    pub fn live_ids(&self) -> Vec<String> {
+        self.lock().keys().cloned().collect()
+    }
+
+    /// Points a live buffer at its file's new place after the file moved between folders.
+    pub fn relocate(&self, track_id: &str, path: &Path) {
+        if let Some(buf) = self.get(track_id) {
+            *buf.path.lock().unwrap_or_else(|p| p.into_inner()) = path.to_path_buf();
+        }
+    }
+
     fn file_for(&self, track_id: &str) -> PathBuf {
-        let safe: String = track_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
-        self.dir.join(format!("{safe}.part"))
+        self.dir.join(format!("{}.part", crate::storage::file_stem(track_id)))
     }
 
     fn insert(&self, track_id: String, buf: Arc<Buffer>) {
@@ -109,7 +154,7 @@ impl Streams {
         if let Some(old) = map.insert(track_id, buf) {
             drop_buffer(&old);
         }
-        let keep: Vec<PathBuf> = map.values().map(|b| b.path.clone()).collect();
+        let keep: Vec<PathBuf> = map.values().map(|b| b.path()).collect();
         self.sweep(&keep);
         if map.len() > KEEP_BUFFERS {
             let mut by_age: Vec<(String, Instant)> =
@@ -129,8 +174,8 @@ fn drop_buffer(buf: &Buffer) {
         task.abort();
     }
     // The webview may still hold the file for a moment; startup cleanup catches what's left.
-    if buf.owned {
-        let _ = std::fs::remove_file(&buf.path);
+    if buf.owned.load(Ordering::SeqCst) {
+        let _ = std::fs::remove_file(buf.path());
     }
 }
 
@@ -147,26 +192,49 @@ pub async fn prepare(state: &Arc<AppState>, track: &Track, quality: Quality, ret
     if track.source == LOCAL {
         return local_buffer(state, track);
     }
-    let resolution = resolver::resolve(state, track, quality, retry).await?;
+    if retry {
+        // Playing the stored file failed, so it is damaged: fetch the song again.
+        crate::storage::discard(state, &track.id);
+    } else if let Some(disk) = crate::storage::on_disk(state, &track.id)? {
+        let buf = complete_buffer(disk.played, disk.stand_in, disk.mime, disk.loudness_db, disk.path);
+        state.streams.insert(track.id.clone(), buf.clone());
+        return Ok(buf);
+    }
+    if !crate::network::ensure_online(state).await {
+        return Err(AppError::new("offline", "not saved on this PC"));
+    }
+    let resolution = match resolver::resolve(state, track, quality, retry).await {
+        Ok(r) => r,
+        Err(e) => {
+            crate::network::suspect(state, e.code);
+            return Err(e);
+        }
+    };
     Ok(start_buffer(state, &track.id, resolution, quality))
+}
+
+/// A song that is already complete on disk: nothing to download.
+fn complete_buffer(played: Track, stand_in: bool, mime: String, loudness_db: Option<f32>, path: PathBuf) -> Arc<Buffer> {
+    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let (tx, _) = watch::channel(Progress { written: size, total: Some(size), done: true, failed: None });
+    Arc::new(Buffer {
+        played,
+        stand_in,
+        owned: AtomicBool::new(false),
+        mime,
+        loudness_db,
+        path: Mutex::new(path),
+        progress: tx,
+        task: Mutex::new(None),
+        last_used: Mutex::new(Instant::now()),
+    })
 }
 
 /// A Local music file is already complete on disk: serve it where it is.
 fn local_buffer(state: &Arc<AppState>, track: &Track) -> AppResult<Arc<Buffer>> {
     let path = crate::local::path_for(state, &track.source_id)?;
-    let size = std::fs::metadata(&path)?.len();
-    let (tx, _) = watch::channel(Progress { written: size, total: Some(size), done: true, failed: None });
-    let buf = Arc::new(Buffer {
-        played: track.clone(),
-        stand_in: false,
-        owned: false,
-        mime: crate::local::mime_for(&path).into(),
-        loudness_db: None,
-        path,
-        progress: tx,
-        task: Mutex::new(None),
-        last_used: Mutex::new(Instant::now()),
-    });
+    std::fs::metadata(&path)?;
+    let buf = complete_buffer(track.clone(), false, crate::local::mime_for(&path).into(), None, path);
     state.streams.insert(track.id.clone(), buf.clone());
     Ok(buf)
 }
@@ -175,22 +243,22 @@ fn start_buffer(state: &Arc<AppState>, requested_id: &str, r: Resolution, qualit
     let (tx, _) = watch::channel(Progress { total: r.stream.size, ..Default::default() });
     let buf = Arc::new(Buffer {
         stand_in: r.stand_in,
-        owned: true,
+        owned: AtomicBool::new(true),
         mime: r.stream.mime.clone(),
         loudness_db: r.stream.loudness_db,
-        path: state.streams.file_for(requested_id),
+        path: Mutex::new(state.streams.file_for(requested_id)),
         played: r.played.clone(),
         progress: tx,
         task: Mutex::new(None),
         last_used: Mutex::new(Instant::now()),
     });
-    let handle = tokio::spawn(download(state.clone(), buf.clone(), r, quality));
+    let handle = tokio::spawn(download(state.clone(), requested_id.to_string(), buf.clone(), r, quality));
     *buf.task.lock().unwrap_or_else(|p| p.into_inner()) = Some(handle.abort_handle());
     state.streams.insert(requested_id.to_string(), buf.clone());
     buf
 }
 
-async fn download(state: Arc<AppState>, buf: Arc<Buffer>, r: Resolution, quality: Quality) {
+async fn download(state: Arc<AppState>, requested_id: String, buf: Arc<Buffer>, r: Resolution, quality: Quality) {
     let result = match r.stream.kind {
         StreamKind::Direct => download_direct(&state, &buf, r, quality).await,
         StreamKind::Hls => match download_hls(&state, &buf, &r.stream.url).await {
@@ -206,6 +274,21 @@ async fn download(state: Arc<AppState>, buf: Arc<Buffer>, r: Resolution, quality
             other => other,
         },
     };
+    match &result {
+        // Hand the finished file to the cache (or downloads) before "done" is announced, so a
+        // download waiting for this song finds it already stored.
+        Ok(()) if buf.progress.borrow().written > 0 => {
+            match crate::storage::keep(&state, &requested_id, &buf.path(), &buf.played, buf.stand_in, &buf.mime, buf.loudness_db) {
+                Ok(path) => {
+                    *buf.path.lock().unwrap_or_else(|p| p.into_inner()) = path;
+                    buf.owned.store(false, Ordering::SeqCst);
+                }
+                Err(e) => eprintln!("keeping {} failed: {e}", buf.played.id),
+            }
+        }
+        Err(e) => crate::network::suspect(&state, e.code),
+        _ => {}
+    }
     buf.progress.send_modify(|p| match result {
         Ok(()) => {
             p.done = true;
@@ -223,7 +306,7 @@ fn parse_total(content_range: Option<&str>) -> Option<u64> {
 }
 
 async fn download_direct(state: &Arc<AppState>, buf: &Buffer, mut r: Resolution, quality: Quality) -> AppResult<()> {
-    let mut file = tokio::fs::File::create(&buf.path).await?;
+    let mut file = tokio::fs::File::create(buf.path()).await?;
     let (mut written, mut refreshes, mut retries) = (0u64, 0u32, 0u32);
     loop {
         let total = buf.progress.borrow().total;
@@ -326,7 +409,7 @@ async fn download_hls(state: &Arc<AppState>, buf: &Buffer, playlist_url: &str) -
     if let Some(total) = hls_total_size(state, &segments).await {
         buf.progress.send_modify(|p| p.total = Some(total));
     }
-    let mut file = tokio::fs::File::create(&buf.path).await?;
+    let mut file = tokio::fs::File::create(buf.path()).await?;
     let mut written = 0u64;
     // A few segments in flight at a time, written strictly in order.
     for group in segments.chunks(HLS_PARALLEL) {
@@ -443,7 +526,8 @@ pub async fn serve(state: Arc<AppState>, req: Request<Vec<u8>>) -> Response<Vec<
     }
     let available_end = p.written.saturating_sub(1);
     let end = req_end.unwrap_or(u64::MAX).min(start + SERVE_MAX - 1).min(available_end).min(total - 1);
-    match read_range(&buf.path, start, end) {
+    // The file may have moved into the cache a moment ago; a second try finds it there.
+    match read_range(&buf.path(), start, end).or_else(|_| read_range(&buf.path(), start, end)) {
         Ok(body) => Response::builder()
             .status(StatusCode::PARTIAL_CONTENT)
             .header(header::CONTENT_TYPE, buf.mime.as_str())

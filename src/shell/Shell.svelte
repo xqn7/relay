@@ -102,6 +102,8 @@
         <ListPage mode="liked" />
       {:else if ui.route.name === "local"}
         <ListPage mode="local" />
+      {:else if ui.route.name === "offline"}
+        <ListPage mode="offline" />
       {:else if ui.route.name === "folder"}
         <FolderPage id={ui.route.id} />
       {:else if ui.route.name === "trash"}

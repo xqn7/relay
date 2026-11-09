@@ -266,7 +266,7 @@ impl YouTube {
         let a = self.rp.query().music_artist(id, false).await.map_err(map_err)?;
         let (singles, albums): (Vec<AlbumItem>, Vec<AlbumItem>) = a.albums.into_iter().partition(|x| x.album_type == AlbumType::Single);
         let by_year = |mut v: Vec<Collection>| {
-            v.sort_by(|x, y| y.year.cmp(&x.year));
+            v.sort_by_key(|c| std::cmp::Reverse(c.year));
             v
         };
         Ok(ArtistPage {

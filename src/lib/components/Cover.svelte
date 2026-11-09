@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { coverAt } from "../api";
+  import { coverAt, proxiedCover } from "../api";
   import type { IconName } from "../icons";
   import Icon from "./Icon.svelte";
 
@@ -8,7 +8,11 @@
 
   let failed = $state(false);
   // Ask for roughly twice the displayed size for sharp edges on high-DPI screens.
-  const url = $derived(coverAt(src, Math.min(544, Math.ceil(size * 2))));
+  // Through the app, which keeps a copy on disk: covers load instantly and show offline too.
+  const url = $derived.by(() => {
+    const sized = coverAt(src, Math.min(544, Math.ceil(size * 2)));
+    return sized ? proxiedCover(sized) : null;
+  });
   $effect(() => {
     void src;
     failed = false;

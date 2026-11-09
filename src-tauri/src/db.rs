@@ -141,6 +141,31 @@ CREATE TABLE local_files(
     trashed_at INTEGER,
     trash_path TEXT
 );
+"#, r#"
+CREATE TABLE audio_files(
+    track_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    file TEXT NOT NULL,
+    bytes INTEGER NOT NULL,
+    mime TEXT NOT NULL,
+    played TEXT NOT NULL,
+    stand_in INTEGER NOT NULL DEFAULT 0,
+    loudness_db REAL,
+    last_used INTEGER NOT NULL
+);
+CREATE INDEX audio_files_lru ON audio_files(kind, last_used);
+CREATE TABLE offline(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    track_id TEXT NOT NULL,
+    added_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, track_id)
+);
+ALTER TABLE playlists ADD COLUMN offline INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE hd_covers(
+    track_id TEXT PRIMARY KEY,
+    url TEXT,
+    checked_at INTEGER NOT NULL
+);
 "#];
 
 impl Db {
@@ -185,6 +210,11 @@ impl Db {
             )
         })?;
         Ok(())
+    }
+
+    /// A UI preference stored for this PC ("pref.<key>", JSON), if set and of the right type.
+    pub fn pref<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
+        self.device_get(&format!("pref.{key}")).ok().flatten().and_then(|v| serde_json::from_str(&v).ok())
     }
 
     pub fn device_delete(&self, key: &str) -> AppResult<()> {

@@ -5,6 +5,7 @@
   import SearchBox from "../lib/components/SearchBox.svelte";
   import Segmented from "../lib/components/Segmented.svelte";
   import Tile from "../lib/components/Tile.svelte";
+  import { offline } from "../lib/stores/offline.svelte";
   import { t } from "../lib/i18n/index.svelte";
   import { newFolder, newPlaylist, openFolderMenu, openPlaylistMenu } from "../lib/playlistMenu";
   import { dialogs } from "../lib/stores/dialogs.svelte";
@@ -101,6 +102,9 @@
         subtitle={localCount == null ? "" : t("library.songs", { n: localCount })}
         icon="folder"
         onclick={() => ui.open({ name: "local" })} />
+    {/if}
+    {#if show(t("offline.title")) && (offline.downloaded.size > 0 || offline.cached.size > 0 || !offline.online)}
+      <Tile title={t("offline.title")} subtitle={t("offline.tileSub")} icon="download" onclick={() => ui.open({ name: "offline" })} />
     {/if}
     {#each folders as f (f.id)}
       <Tile
