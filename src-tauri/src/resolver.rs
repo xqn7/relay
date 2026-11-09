@@ -3,7 +3,8 @@
 
 use crate::error::{AppError, AppResult};
 use crate::matcher;
-use crate::sources::{Quality, ResolvedStream, SearchKind, Source, StreamKind, Track, SOUNDCLOUD, YOUTUBE};
+use crate::matching;
+use crate::sources::{is_import_only, Quality, ResolvedStream, SearchKind, Source, StreamKind, Track, SOUNDCLOUD, YOUTUBE};
 use crate::util::now_secs;
 use crate::AppState;
 use rusqlite::{params, OptionalExtension};
@@ -14,9 +15,12 @@ use tauri::Emitter;
 pub const RESOLVE_TIMEOUT: Duration = Duration::from_secs(20);
 
 pub struct Resolution {
-    /// The track whose audio will actually play (differs from the request for stand-ins).
+    /// The track whose audio will actually play (differs from the request for imported
+    /// songs and stand-ins).
     pub played: Track,
     pub stream: ResolvedStream,
+    /// The song's own source failed and another source's version plays instead.
+    pub stand_in: bool,
 }
 
 #[derive(Clone, Serialize)]
@@ -41,10 +45,17 @@ pub async fn resolve(state: &AppState, track: &Track, quality: Quality, fresh: b
 }
 
 async fn resolve_inner(state: &AppState, track: &Track, quality: Quality, fresh: bool) -> AppResult<Resolution> {
+    if is_import_only(&track.source) {
+        // Imported songs play through their saved (or freshly searched) match.
+        let matched = matching::matched(state, track, true)
+            .await?
+            .ok_or_else(|| AppError::new("nothing_playable", "no match on YouTube or SoundCloud"))?;
+        return Box::pin(resolve_inner(state, &matched, quality, fresh)).await;
+    }
     let native_err = match native_stream(state, track, quality, fresh).await {
         Ok(stream) => {
             emit_status(state, SourceStatus { source: source_name(&track.source), ok: true, code: "ok", fallback: None });
-            return Ok(Resolution { played: track.clone(), stream });
+            return Ok(Resolution { played: track.clone(), stream, stand_in: false });
         }
         Err(e) => e,
     };
@@ -97,7 +108,7 @@ async fn stand_in(state: &AppState, track: &Track, source: &str, quality: Qualit
         .clone();
     state.db.upsert_track(&candidate)?;
     let stream = native_stream(state, &candidate, quality, false).await?;
-    Ok(Resolution { played: candidate, stream })
+    Ok(Resolution { played: candidate, stream, stand_in: true })
 }
 
 fn cached_stream(state: &AppState, track_id: &str) -> AppResult<Option<ResolvedStream>> {

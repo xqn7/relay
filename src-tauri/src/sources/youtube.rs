@@ -7,7 +7,7 @@ use crate::error::{AppError, AppResult};
 use crate::tools::Tools;
 use rustypipe::client::RustyPipe;
 use rustypipe::error::{Error as RpError, ExtractionError};
-use rustypipe::model::{AlbumItem, ArtistItem, MusicItem, MusicPlaylistItem, Thumbnail, TrackItem, TrackType};
+use rustypipe::model::{AlbumItem, AlbumType, ArtistItem, MusicItem, MusicPlaylistItem, Thumbnail, TrackItem, TrackType};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -40,6 +40,17 @@ fn map_err(e: RpError) -> AppError {
     AppError::new(code, format!("YouTube: {e}"))
 }
 
+/// Most songs a YouTube playlist import reads (YouTube itself caps playlists at 5,000).
+const MAX_PLAYLIST: usize = 5_000;
+
+fn album_kind(t: AlbumType) -> &'static str {
+    match t {
+        AlbumType::Single => "single",
+        AlbumType::Ep => "ep",
+        _ => "album",
+    }
+}
+
 /// Largest thumbnail up to ~600px wide: sharp enough for the big player, small enough to load fast.
 fn best_thumb(thumbs: &[Thumbnail]) -> Option<String> {
     thumbs
@@ -55,6 +66,7 @@ fn map_track(t: TrackItem) -> Track {
     Track {
         id: Track::make_id(YOUTUBE, &t.id),
         link: Some(format!("https://music.youtube.com/watch?v={}", t.id)),
+        via: None,
         source: YOUTUBE.into(),
         title: t.name,
         artists,
@@ -72,7 +84,7 @@ fn map_album(a: AlbumItem) -> Collection {
         Some(y) => format!("{artists} · {y}"),
         None => artists,
     };
-    Collection { source: YOUTUBE.into(), kind: "album".into(), cover: best_thumb(&a.cover), id: a.id, title: a.name, subtitle }
+    Collection { source: YOUTUBE.into(), kind: "album".into(), cover: best_thumb(&a.cover), year: a.year, id: a.id, title: a.name, subtitle }
 }
 
 fn map_playlist(p: MusicPlaylistItem) -> Collection {
@@ -81,6 +93,7 @@ fn map_playlist(p: MusicPlaylistItem) -> Collection {
         kind: "playlist".into(),
         cover: best_thumb(&p.thumbnail),
         subtitle: p.channel.map(|c| c.name).unwrap_or_default(),
+        year: None,
         id: p.id,
         title: p.name,
     }
@@ -158,5 +171,123 @@ impl YouTube {
     pub async fn radio(&self, video_id: &str) -> AppResult<Vec<Track>> {
         let radio = self.rp.query().music_radio_track(video_id).await.map_err(map_err)?;
         Ok(radio.items.into_iter().map(map_track).filter(|t| t.is_sane() && t.source_id != video_id).collect())
+    }
+}
+
+impl YouTube {
+    /// Song search on YouTube Music. With `videos`, searches music videos instead, which
+    /// the matcher only uses when no plain song matched.
+    pub async fn search_songs(&self, query: &str, videos: bool) -> AppResult<Vec<Track>> {
+        let q = self.rp.query();
+        let items = if videos {
+            q.music_search_videos(query).await.map_err(map_err)?.items.items
+        } else {
+            q.music_search_tracks(query).await.map_err(map_err)?.items.items
+        };
+        Ok(items.into_iter().map(map_track).filter(Track::is_sane).collect())
+    }
+
+    /// Reads a playlist, album or song for import. Deleted and private videos are left out
+    /// by YouTube; the difference to the stated song count is reported as skipped.
+    pub async fn import(&self, kind: &str, id: &str) -> AppResult<RemoteList> {
+        let q = self.rp.query();
+        let mut list = RemoteList {
+            origin: format!("{YOUTUBE}:{kind}:{id}"),
+            service: YOUTUBE.into(),
+            kind: kind.into(),
+            title: String::new(),
+            owner: String::new(),
+            cover: None,
+            tracks: Vec::new(),
+            skipped: Vec::new(),
+            truncated: false,
+        };
+        match kind {
+            "playlist" => {
+                let mut pl = q.music_playlist(id).await.map_err(map_err)?;
+                pl.tracks.extend_limit(&q, MAX_PLAYLIST).await.map_err(map_err)?;
+                list.title = pl.name;
+                list.owner = pl.channel.map(|c| c.name).unwrap_or_default();
+                list.cover = best_thumb(&pl.thumbnail);
+                list.tracks = pl.tracks.items.into_iter().map(map_track).filter(Track::is_sane).collect();
+                let missing = pl.track_count.map(|n| n as usize).unwrap_or(0).saturating_sub(list.tracks.len());
+                list.truncated = list.tracks.len() >= MAX_PLAYLIST;
+                if !list.truncated {
+                    list.skipped = (0..missing).map(|_| Skipped { title: String::new(), artist: String::new(), reason: "deleted".into() }).collect();
+                }
+            }
+            "album" => {
+                let album = self.album_page(id).await?;
+                list.title = album.title;
+                list.owner = album.artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ");
+                list.cover = album.cover;
+                list.tracks = album.tracks;
+            }
+            "track" => {
+                let details = q.music_details(id).await.map_err(map_err)?;
+                let track = map_track(details.track);
+                list.title = track.title.clone();
+                list.owner = track.artist_line();
+                list.cover = track.cover.clone();
+                list.tracks = vec![track].into_iter().filter(Track::is_sane).collect();
+            }
+            _ => return Err(AppError::new("invalid_input", "unknown YouTube link")),
+        }
+        Ok(list)
+    }
+
+    pub async fn album_page(&self, id: &str) -> AppResult<AlbumPage> {
+        let album = self.rp.query().music_album(id).await.map_err(map_err)?;
+        let cover = best_thumb(&album.cover);
+        let mut tracks: Vec<Track> = album.tracks.into_iter().map(map_track).filter(Track::is_sane).collect();
+        // Album track lists omit per-track covers and album links; fill them in.
+        for t in tracks.iter_mut() {
+            if t.cover.is_none() {
+                t.cover = cover.clone();
+            }
+            if t.album.is_none() {
+                t.album = Some(AlbumRef { id: album.id.clone(), name: album.name.clone() });
+            }
+        }
+        Ok(AlbumPage {
+            source: YOUTUBE.into(),
+            link: Some(format!("https://music.youtube.com/browse/{}", album.id)),
+            id: album.id,
+            title: album.name,
+            artists: album.artists.into_iter().map(|a| ArtistRef { id: a.id, name: a.name }).collect(),
+            cover,
+            year: album.year,
+            kind: album_kind(album.album_type).into(),
+            tracks,
+        })
+    }
+
+    pub async fn artist_page(&self, id: &str) -> AppResult<ArtistPage> {
+        let a = self.rp.query().music_artist(id, false).await.map_err(map_err)?;
+        let (singles, albums): (Vec<AlbumItem>, Vec<AlbumItem>) = a.albums.into_iter().partition(|x| x.album_type == AlbumType::Single);
+        let by_year = |mut v: Vec<Collection>| {
+            v.sort_by(|x, y| y.year.cmp(&x.year));
+            v
+        };
+        Ok(ArtistPage {
+            source: YOUTUBE.into(),
+            link: Some(format!("https://music.youtube.com/channel/{}", a.id)),
+            avatar: best_thumb(&a.header_image),
+            banner: a.header_image.iter().filter(|t| t.url.starts_with("https://")).max_by_key(|t| t.width).map(|t| t.url.clone()),
+            about: a.description.filter(|d| !d.trim().is_empty()),
+            top_tracks: a.tracks.into_iter().map(map_track).filter(Track::is_sane).collect(),
+            albums: by_year(albums.into_iter().map(map_album).collect()),
+            singles: by_year(singles.into_iter().map(map_album).collect()),
+            similar: a.similar_artists.into_iter().map(map_artist).collect(),
+            id: a.id,
+            name: a.name,
+        })
+    }
+
+    /// The YouTube Music artist for a name, for songs whose artist has no id (imports).
+    pub async fn find_artist(&self, name: &str) -> AppResult<Option<ArtistCard>> {
+        let found = self.rp.query().music_search_artists(name).await.map_err(map_err)?.items.items;
+        let wanted = crate::matcher::fold(name);
+        Ok(found.into_iter().map(map_artist).find(|a| crate::matcher::fold(&a.name) == wanted))
     }
 }

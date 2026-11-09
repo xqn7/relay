@@ -29,6 +29,12 @@ export const i18n = {
 
 export function t(key: Key, vars?: Record<string, string | number>): string {
   let text: string = dictionaries[current][key] ?? en[key];
+  // "one|other" (or "zero|one|other") variants are picked by the {n} count.
+  if (text.includes("|") && typeof vars?.n === "number") {
+    const forms = text.split("|");
+    const n = vars.n;
+    text = forms.length === 3 ? forms[n === 0 ? 0 : n === 1 ? 1 : 2] : forms[n === 1 ? 0 : 1];
+  }
   if (vars) {
     for (const [name, value] of Object.entries(vars)) text = text.replaceAll(`{${name}}`, String(value));
   }

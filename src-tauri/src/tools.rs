@@ -8,7 +8,7 @@ use crate::sources::{Quality, ResolvedStream, StreamKind};
 use crate::util::{now_secs, query_param};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -17,6 +17,8 @@ use tokio::sync::Mutex;
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
 const YTDLP_EXE: &str = "yt-dlp.exe";
+const FFMPEG_EXE: &str = "ffmpeg.exe";
+const FFMPEG_ZIP: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
 /// Windows: run console programs without flashing a console window.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -63,6 +65,29 @@ pub fn classify_ytdlp_error(stderr: &str) -> &'static str {
     }
 }
 
+/// "Stream #0:1(und): Audio: aac (LC) (mp4a / …)" → "aac"
+pub fn parse_audio_codec(ffmpeg_info: &str) -> Option<String> {
+    ffmpeg_info.lines().find_map(|l| {
+        let rest = l.split("Audio: ").nth(1)?;
+        let codec: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+        (!codec.is_empty()).then_some(codec)
+    })
+}
+
+fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if let Some(found) = find_file(&path, name) {
+                return Some(found);
+            }
+        } else if path.file_name().is_some_and(|n| n == name) {
+            return Some(path);
+        }
+    }
+    None
+}
+
 impl Tools {
     pub fn new(dir: PathBuf, http: Arc<Http>, app: AppHandle) -> Self {
         Self { dir, http, app, install_lock: Mutex::new(()), installing: AtomicBool::new(false) }
@@ -94,12 +119,19 @@ impl Tools {
         let sums = self.http.get_text(&format!("{YTDLP_BASE}/SHA2-256SUMS")).await?;
         let expected = expected_hash(&sums, YTDLP_EXE)
             .ok_or_else(|| AppError::new("bad_response", "yt-dlp checksum list has no entry for yt-dlp.exe"))?;
+        let tmp = self.dir.join("yt-dlp.download");
+        self.download_verified("yt-dlp", &format!("{YTDLP_BASE}/{YTDLP_EXE}"), &expected, &tmp).await?;
+        tokio::fs::rename(&tmp, self.ytdlp_path()).await?;
+        Ok(())
+    }
 
-        let mut resp = self.http.client.get(format!("{YTDLP_BASE}/{YTDLP_EXE}")).send().await?;
+    /// Streams a download to `dest` while hashing it, with progress events. The file is
+    /// deleted again if it doesn't match `expected` (lowercase hex SHA-256).
+    async fn download_verified(&self, tool: &'static str, url: &str, expected: &str, dest: &Path) -> AppResult<()> {
+        let mut resp = self.http.client.get(url).send().await?;
         check_status(&resp)?;
         let total = resp.content_length();
-        let tmp = self.dir.join("yt-dlp.download");
-        let mut file = tokio::fs::File::create(&tmp).await?;
+        let mut file = tokio::fs::File::create(dest).await?;
         let mut hasher = Sha256::new();
         let (mut received, mut last_emit) = (0u64, 0u64);
         while let Some(chunk) = resp.chunk().await? {
@@ -108,19 +140,94 @@ impl Tools {
             received += chunk.len() as u64;
             if received - last_emit > 512 * 1024 {
                 last_emit = received;
-                let _ = self.app.emit("tool-progress", ToolProgress { tool: "yt-dlp", received, total, done: false });
+                let _ = self.app.emit("tool-progress", ToolProgress { tool, received, total, done: false });
             }
         }
         file.flush().await?;
         drop(file);
         let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
         if actual != expected {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err(AppError::new("verify_failed", "yt-dlp download did not match its checksum"));
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(AppError::new("verify_failed", format!("{tool} download did not match its checksum")));
         }
-        tokio::fs::rename(&tmp, self.ytdlp_path()).await?;
-        let _ = self.app.emit("tool-progress", ToolProgress { tool: "yt-dlp", received, total, done: true });
+        let _ = self.app.emit("tool-progress", ToolProgress { tool, received, total, done: true });
         Ok(())
+    }
+
+    fn ffmpeg_path(&self) -> PathBuf {
+        self.dir.join(FFMPEG_EXE)
+    }
+
+    /// ffmpeg, downloading it the first time (imports of video files need it). Several
+    /// imports at once share one download.
+    pub async fn ffmpeg(&self) -> AppResult<PathBuf> {
+        let exe = self.ffmpeg_path();
+        if exe.exists() {
+            return Ok(exe);
+        }
+        let _guard = self.install_lock.lock().await;
+        if !exe.exists() {
+            self.install_ffmpeg().await?;
+        }
+        Ok(exe)
+    }
+
+    /// Downloads the "essentials" build (the one ffmpeg.org links for Windows), checks its
+    /// published SHA-256 and keeps only ffmpeg.exe. Windows' own tar.exe unpacks the zip.
+    async fn install_ffmpeg(&self) -> AppResult<()> {
+        tokio::fs::create_dir_all(&self.dir).await?;
+        let sum = self.http.get_text(&format!("{FFMPEG_ZIP}.sha256")).await?;
+        let expected = sum.split_whitespace().next().filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()));
+        let expected = expected.ok_or_else(|| AppError::new("bad_response", "ffmpeg checksum is missing"))?.to_lowercase();
+        let zip = self.dir.join("ffmpeg.download.zip");
+        self.download_verified("ffmpeg", FFMPEG_ZIP, &expected, &zip).await?;
+        let unpack = self.dir.join("ffmpeg-unpack");
+        let _ = tokio::fs::remove_dir_all(&unpack).await;
+        tokio::fs::create_dir_all(&unpack).await?;
+        let tar = std::env::var("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe")).unwrap_or_else(|_| PathBuf::from("tar.exe"));
+        let out = tokio::process::Command::new(tar)
+            .arg("-xf")
+            .arg(&zip)
+            .arg("-C")
+            .arg(&unpack)
+            .arg("*/bin/ffmpeg.exe")
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .await?;
+        let _ = tokio::fs::remove_file(&zip).await;
+        let found = find_file(&unpack, FFMPEG_EXE);
+        let result = match (out.status.success(), found) {
+            (true, Some(path)) => tokio::fs::rename(&path, self.ffmpeg_path()).await.map_err(AppError::from),
+            _ => Err(AppError::new("install_failed", format!("could not unpack ffmpeg: {}", String::from_utf8_lossy(&out.stderr).trim()))),
+        };
+        let _ = tokio::fs::remove_dir_all(&unpack).await;
+        result
+    }
+
+    /// Runs ffmpeg quietly; returns its stderr (where it prints stream info) on success.
+    pub async fn run_ffmpeg(&self, args: &[&std::ffi::OsStr]) -> AppResult<String> {
+        let exe = self.ffmpeg().await?;
+        let out = tokio::process::Command::new(exe)
+            .args(["-hide_banner", "-nostdin", "-y"])
+            .args(args)
+            .creation_flags(CREATE_NO_WINDOW)
+            .kill_on_drop(true)
+            .output()
+            .await?;
+        let err = String::from_utf8_lossy(&out.stderr).into_owned();
+        if !out.status.success() {
+            let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("failed").to_string();
+            return Err(AppError::new("convert_failed", format!("ffmpeg: {last}")));
+        }
+        Ok(err)
+    }
+
+    /// The codec of the first audio stream ("aac", "opus", "mp3", …), read from `ffmpeg -i`.
+    pub async fn audio_codec(&self, input: &Path) -> AppResult<Option<String>> {
+        let exe = self.ffmpeg().await?;
+        // Without an output file ffmpeg exits with an error after printing the stream info.
+        let out = tokio::process::Command::new(exe).arg("-hide_banner").arg("-i").arg(input).creation_flags(CREATE_NO_WINDOW).output().await?;
+        Ok(parse_audio_codec(&String::from_utf8_lossy(&out.stderr)))
     }
 
     /// Asks yt-dlp for the best audio-only stream of a YouTube video.
@@ -185,6 +292,14 @@ mod tests {
         let sums = format!("{h}  yt-dlp.exe\n{}  yt-dlp\n", "b".repeat(64));
         assert_eq!(expected_hash(&sums, "yt-dlp.exe"), Some(h));
         assert_eq!(expected_hash(&sums, "nope"), None);
+    }
+
+    #[test]
+    fn reads_audio_codec_from_ffmpeg_info() {
+        let info = "Input #0, mov,mp4\n  Stream #0:0(und): Video: h264 (High)\n  Stream #0:1(und): Audio: aac (LC) (mp4a / 0x6134706D), 44100 Hz";
+        assert_eq!(parse_audio_codec(info).as_deref(), Some("aac"));
+        assert_eq!(parse_audio_codec("Stream #0:0: Audio: opus, 48000 Hz").as_deref(), Some("opus"));
+        assert_eq!(parse_audio_codec("no audio here"), None);
     }
 
     #[test]

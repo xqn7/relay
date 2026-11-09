@@ -1,8 +1,10 @@
 <script lang="ts">
-  import { artistLine, formatTime } from "../lib/api";
+  import { formatTime } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import IconButton from "../lib/components/IconButton.svelte";
+  import LikeButton from "../lib/components/LikeButton.svelte";
+  import { openArtist, playsFrom } from "../lib/navigate";
   import Slider from "../lib/components/Slider.svelte";
   import SourceBadge from "../lib/components/SourceBadge.svelte";
   import Spinner from "../lib/components/Spinner.svelte";
@@ -12,7 +14,8 @@
   import { openTrackMenu } from "../lib/trackMenu";
 
   const track = $derived(player.current?.track ?? null);
-  const shownSource = $derived(player.standIn?.source ?? track?.source ?? "youtube");
+  const shownSource = $derived(player.via?.source ?? (track ? playsFrom(track) : "youtube"));
+  const shownCover = $derived(track?.cover ?? player.via?.cover ?? null);
   let seekPreview = $state<number | null>(null);
   const progress = $derived(seekPreview ?? (player.durationMs > 0 ? player.positionMs / player.durationMs : 0));
   const repeatLabel = $derived(
@@ -45,14 +48,17 @@
 
   <div class="now">
     {#if track}
-      <Cover src={track.cover} size={44} />
-      <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, [track], 0)}>
+      <Cover src={shownCover} size={44} />
+      <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [track], index: 0 })}>
         <div class="title truncate">{track.title}</div>
         <div class="artist">
           <SourceBadge source={shownSource} />
-          <span class="truncate">{artistLine(track)}</span>
+          <span class="truncate">
+            {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="artist-link" onclick={() => openArtist(a, track.source)}>{a.name}</button>{/each}
+          </span>
         </div>
       </div>
+      <LikeButton {track} />
     {:else}
       <div class="cover-empty"><Icon name="music" size={18} /></div>
       <div class="meta"><div class="title muted">{t("player.nothing")}</div></div>
@@ -209,5 +215,17 @@
     right: 0;
     bottom: -16px;
     height: 16px;
+  }
+  .artist-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+  }
+  .artist-link:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 </style>

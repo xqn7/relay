@@ -129,11 +129,14 @@ export function cycleRepeat(r: Repeat): Repeat {
  * Where to go after the current song. `auto` means the song ended by itself (repeat-one
  * applies); a manual "next" always moves on. Returns null when playback should stop.
  */
-export function nextIndex(q: QueueState, auto: boolean): number | null {
+export function nextIndex(q: QueueState, auto: boolean, skip?: (item: QueueItem) => boolean): number | null {
   if (q.items.length === 0) return null;
   if (auto && q.repeat === "one") return q.index;
-  if (q.index + 1 < q.items.length) return q.index + 1;
-  return q.repeat === "off" ? null : 0;
+  const step = (i: number): number | null => (i + 1 < q.items.length ? i + 1 : q.repeat === "off" ? null : 0);
+  let i = step(q.index);
+  // Songs the user said not to play are passed over when the queue moves on by itself.
+  for (let tries = 0; auto && skip && i != null && skip(q.items[i]) && tries < q.items.length; tries++) i = step(i);
+  return i != null && auto && skip?.(q.items[i]) ? null : i;
 }
 
 export function prevIndex(q: QueueState): number {

@@ -6,6 +6,10 @@ export interface MenuItem {
   icon: IconName;
   action: () => void;
   disabled?: boolean;
+  /** Draws a thin line above this item, to group related entries. */
+  divider?: boolean;
+  /** Opens another list in place (e.g. "Add to playlist") instead of closing the menu. */
+  submenu?: boolean;
 }
 
 class MenuStore {
@@ -21,6 +25,11 @@ class MenuStore {
     this.x = e.clientX;
     this.y = e.clientY;
     this.open = true;
+  }
+
+  /** Swaps in a second list at the same spot (for "Add to playlist" and "Go to artist"). */
+  replace(items: MenuItem[]): void {
+    this.items = items;
   }
 
   close(): void {

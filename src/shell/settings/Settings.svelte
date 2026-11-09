@@ -8,6 +8,7 @@
   import { ui } from "../../lib/stores/ui.svelte";
   import { pages, type PageId } from "./pages";
   import PlaybackPage from "./PlaybackPage.svelte";
+  import StoragePage from "./StoragePage.svelte";
 
   let { onSignOut }: { onSignOut: () => void } = $props();
 
@@ -76,6 +77,8 @@
     <div class="content">
       {#if current.id === "playback"}
         <PlaybackPage {visible} />
+      {:else if current.id === "storage"}
+        <StoragePage {visible} />
       {:else}
         <div class="soon">
           <Icon name={current.icon} size={28} />

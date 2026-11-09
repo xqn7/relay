@@ -5,7 +5,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::resolver::{self, Resolution};
-use crate::sources::{Quality, StreamKind, Track};
+use crate::sources::{Quality, StreamKind, Track, LOCAL};
 use crate::AppState;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
@@ -38,6 +38,9 @@ pub struct Progress {
 
 pub struct Buffer {
     pub played: Track,
+    pub stand_in: bool,
+    /// False for Local music files, which are served in place and must never be deleted.
+    owned: bool,
     pub mime: String,
     pub loudness_db: Option<f32>,
     path: PathBuf,
@@ -89,6 +92,13 @@ impl Streams {
         self.lock().get(track_id).cloned()
     }
 
+    /// Drops a song's buffer so the next play resolves it again (after "Fix match").
+    pub fn forget(&self, track_id: &str) {
+        if let Some(old) = self.lock().remove(track_id) {
+            drop_buffer(&old);
+        }
+    }
+
     fn file_for(&self, track_id: &str) -> PathBuf {
         let safe: String = track_id.chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
         self.dir.join(format!("{safe}.part"))
@@ -119,7 +129,9 @@ fn drop_buffer(buf: &Buffer) {
         task.abort();
     }
     // The webview may still hold the file for a moment; startup cleanup catches what's left.
-    let _ = std::fs::remove_file(&buf.path);
+    if buf.owned {
+        let _ = std::fs::remove_file(&buf.path);
+    }
 }
 
 pub fn stream_url(track_id: &str) -> String {
@@ -132,13 +144,38 @@ pub async fn prepare(state: &Arc<AppState>, track: &Track, quality: Quality, ret
         buf.touch();
         return Ok(buf);
     }
+    if track.source == LOCAL {
+        return local_buffer(state, track);
+    }
     let resolution = resolver::resolve(state, track, quality, retry).await?;
     Ok(start_buffer(state, &track.id, resolution, quality))
+}
+
+/// A Local music file is already complete on disk: serve it where it is.
+fn local_buffer(state: &Arc<AppState>, track: &Track) -> AppResult<Arc<Buffer>> {
+    let path = crate::local::path_for(state, &track.source_id)?;
+    let size = std::fs::metadata(&path)?.len();
+    let (tx, _) = watch::channel(Progress { written: size, total: Some(size), done: true, failed: None });
+    let buf = Arc::new(Buffer {
+        played: track.clone(),
+        stand_in: false,
+        owned: false,
+        mime: crate::local::mime_for(&path).into(),
+        loudness_db: None,
+        path,
+        progress: tx,
+        task: Mutex::new(None),
+        last_used: Mutex::new(Instant::now()),
+    });
+    state.streams.insert(track.id.clone(), buf.clone());
+    Ok(buf)
 }
 
 fn start_buffer(state: &Arc<AppState>, requested_id: &str, r: Resolution, quality: Quality) -> Arc<Buffer> {
     let (tx, _) = watch::channel(Progress { total: r.stream.size, ..Default::default() });
     let buf = Arc::new(Buffer {
+        stand_in: r.stand_in,
+        owned: true,
         mime: r.stream.mime.clone(),
         loudness_db: r.stream.loudness_db,
         path: state.streams.file_for(requested_id),

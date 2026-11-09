@@ -101,3 +101,22 @@ describe("queue", () => {
     expect(ok?.repeat).toBe("off");
   });
 });
+
+describe("hidden songs", () => {
+  const hide = (title: string) => (i: Q.QueueItem) => i.track.title === title;
+
+  it("are passed over when the queue moves on by itself", () => {
+    const q = Q.playNow(Q.emptyQueue, tracks, 0);
+    expect(Q.nextIndex(q, true, hide("Song 2"))).toBe(2);
+  });
+
+  it("still play when chosen by hand", () => {
+    const q = Q.playNow(Q.emptyQueue, tracks, 0);
+    expect(Q.nextIndex(q, false, hide("Song 2"))).toBe(1);
+  });
+
+  it("end playback when only hidden songs are left", () => {
+    const q = Q.playNow(Q.emptyQueue, tracks, 3);
+    expect(Q.nextIndex(q, true, hide("Song 5"))).toBe(null);
+  });
+});

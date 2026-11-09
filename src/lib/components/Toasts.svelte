@@ -10,6 +10,14 @@
     <div class="toast glass" animate:flip={{ duration: 180 }} in:fly={{ y: 10, duration: 180 }} out:fly={{ y: 6, duration: 140 }}>
       {#if toast.icon}<Icon name={toast.icon} size={16} />{/if}
       <span>{toast.text}</span>
+      {#if toast.action}
+        <button
+          class="action"
+          onclick={() => {
+            toast.action?.run();
+            ui.dismiss(toast.id);
+          }}>{toast.action.label}</button>
+      {/if}
       {#if toast.progress != null}
         <div class="bar"><div class="fill" style:width="{Math.round(toast.progress * 100)}%"></div></div>
       {/if}
@@ -42,6 +50,20 @@
     background: rgba(24, 24, 27, 0.72);
     font-size: var(--fs-sm);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  }
+  .action {
+    margin-left: 6px;
+    padding: 4px 10px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: var(--glass-raised);
+    font-size: var(--fs-xs);
+    font-weight: 700;
+    color: var(--text);
+    pointer-events: auto;
+  }
+  .action:hover {
+    background: rgba(255, 255, 255, 0.2);
   }
   .toast :global(svg) {
     color: var(--text-2);

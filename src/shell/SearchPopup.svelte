@@ -1,11 +1,11 @@
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
-  import { api, isAppError, SOURCES, type Collection, type SearchKind, type SearchResults, type SourceId } from "../lib/api";
+  import { api, isAppError, SOURCES, type Collection, type SearchKind, type SearchResults, type SearchSource } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import SourceBadge from "../lib/components/SourceBadge.svelte";
   import Spinner from "../lib/components/Spinner.svelte";
-  import TrackRow from "../lib/components/TrackRow.svelte";
+  import TrackList from "../lib/components/TrackList.svelte";
   import type { IconName } from "../lib/icons";
   import { t } from "../lib/i18n/index.svelte";
   import { player, sourceLabel } from "../lib/stores/player.svelte";
@@ -16,7 +16,7 @@
 
   let query = $state("");
   let kind = $state<SearchKind>("all");
-  let results = $state<Partial<Record<SourceId, Status>>>({});
+  let results = $state<Partial<Record<SearchSource, Status>>>({});
   let history = $state<string[]>([]);
   let input = $state<HTMLInputElement>();
   let timer = 0;
@@ -31,7 +31,7 @@
   ];
 
   // SoundCloud has no albums or artist catalog worth showing; only ask the sources that can answer.
-  const sourcesFor = (k: SearchKind): SourceId[] => (k === "albums" || k === "artists" ? ["youtube"] : SOURCES);
+  const sourcesFor = (k: SearchKind): SearchSource[] => (k === "albums" || k === "artists" ? ["youtube"] : SOURCES);
 
   $effect(() => {
     input?.focus();
@@ -68,8 +68,8 @@
   const artists = $derived(done.flatMap((d) => d.artists).slice(0, kind === "all" ? 3 : 40));
   const albums = $derived(done.flatMap((d) => d.albums).slice(0, kind === "all" ? 4 : 40));
   const playlists = $derived(done.flatMap((d) => d.playlists).slice(0, kind === "all" ? 4 : 40));
-  const pending = $derived(Object.entries(results).filter(([, r]) => r?.state === "loading").map(([s]) => s as SourceId));
-  const failed = $derived(Object.entries(results).filter(([, r]) => r?.state === "error").map(([s]) => s as SourceId));
+  const pending = $derived(Object.entries(results).filter(([, r]) => r?.state === "loading").map(([s]) => s as SearchSource));
+  const failed = $derived(Object.entries(results).filter(([, r]) => r?.state === "error").map(([s]) => s as SearchSource));
   const nothing = $derived(pending.length === 0 && tracks.length + artists.length + albums.length + playlists.length === 0);
 
   function remember() {
@@ -81,8 +81,12 @@
     ui.searchOpen = false;
   }
 
-  async function playCollection(c: Collection) {
+  async function openCollection(c: Collection) {
     remember();
+    if (c.kind === "album") {
+      ui.open({ name: "album", source: c.source, id: c.id });
+      return;
+    }
     try {
       const list = await api.collectionTracks(c.source, c.kind, c.id);
       if (list.length) player.playTracks(list, 0);
@@ -92,10 +96,9 @@
     }
   }
 
-  function openArtist(id: string, name: string) {
+  function openArtist(source: SearchSource, id: string, name: string) {
     remember();
-    close();
-    ui.go({ name: "artist", artistId: id, artistName: name }, 0);
+    ui.open({ name: "artist", source, id, artistName: name });
   }
 
   async function clearHistory() {
@@ -145,7 +148,7 @@
       <div class="scroll" role="presentation" onclick={remember}>
         {#if artists.length}
           {#each artists as a (a.source + a.id)}
-            <button class="entity" onclick={() => openArtist(a.id, a.name)}>
+            <button class="entity" onclick={() => openArtist(a.source, a.id, a.name)}>
               <Cover src={a.avatar} size={44} round fallback="user" />
               <span class="name truncate">{a.name}</span>
             </button>
@@ -153,21 +156,19 @@
         {/if}
         {#if tracks.length}
           {#if kind === "all"}<h4>{t("search.songs")}</h4>{/if}
-          {#each tracks as track, i (track.id)}
-            <TrackRow tracks={tracks} index={i} compact />
-          {/each}
+          <TrackList {tracks} compact />
         {/if}
         {#each [{ list: albums, label: t("search.albums"), icon: "disc" as IconName }, { list: playlists, label: t("search.playlists"), icon: "list" as IconName }] as group (group.label)}
           {#if group.list.length}
             {#if kind === "all"}<h4>{group.label}</h4>{/if}
             {#each group.list as c (c.source + c.id)}
-              <button class="entity" onclick={() => playCollection(c)}>
+              <button class="entity" onclick={() => openCollection(c)}>
                 <Cover src={c.cover} size={44} fallback={group.icon} />
                 <span class="col">
                   <span class="name truncate">{c.title}</span>
                   <span class="sub"><SourceBadge source={c.source} /><span class="truncate">{c.subtitle}</span></span>
                 </span>
-                <Icon name="play" size={14} />
+                <Icon name={c.kind === "album" ? "forward" : "play"} size={14} />
               </button>
             {/each}
           {/if}

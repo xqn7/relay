@@ -1,10 +1,11 @@
 // The player: owns the queue, drives the audio engine, talks to the backend, and keeps the
 // Windows media overlay and the saved queue in sync.
 import { listen } from "@tauri-apps/api/event";
-import { api, artistLine, isAppError, type Prepared, type Track } from "../api";
+import { api, artistLine, IMPORT_ONLY, isAppError, type Prepared, type Track } from "../api";
 import { AudioEngine } from "../audio/engine";
 import { t } from "../i18n/index.svelte";
 import * as Q from "../player/queue";
+import { library } from "./library.svelte";
 import { settings } from "./settings.svelte";
 import { ui } from "./ui.svelte";
 
@@ -14,6 +15,9 @@ const MEDIA_SYNC_MS = 5_000;
 const RESTART_THRESHOLD_MS = 3_000;
 const SOURCE_TOAST_COOLDOWN_MS = 60_000;
 const AUTOPLAY_BATCH = 10;
+const RADIO_BATCH = 25;
+/** Imported songs this far ahead get matched before they are reached. */
+const PREMATCH_AHEAD = 3;
 /** After this many songs in a row fail, stop instead of racing through the whole queue. */
 const MAX_FAILS_IN_A_ROW = 3;
 
@@ -33,8 +37,9 @@ class Player {
   loading = $state(false);
   volume = $state(0.8);
   muted = $state(false);
-  /** The track whose audio actually plays, when a stand-in from another source is used. */
-  standIn = $state<Track | null>(null);
+  /** The track whose audio actually plays, when it is not the queued one (an imported song's
+   * match, or a stand-in from another source). */
+  via = $state<Track | null>(null);
 
   private engine: AudioEngine;
   private loadToken = 0;
@@ -130,15 +135,29 @@ class Player {
     this.loadToken++;
     this.queue = Q.emptyQueue;
     this.loadedUid = null;
-    this.standIn = null;
+    this.via = null;
     this.positionMs = this.durationMs = 0;
   }
 
   // ---- queue actions -------------------------------------------------------------------
 
-  playTracks(tracks: Track[], start = 0): void {
+  /** Replaces the queue. `playlistId` counts a play of that playlist (shown in its stats). */
+  playTracks(tracks: Track[], start = 0, playlistId?: string): void {
     this.setQueue(Q.playNow(this.queue, tracks, start));
     this.loadCurrent(true);
+    if (playlistId) api.playlistPlayed(playlistId).catch(() => {});
+  }
+
+  /** Plays the song, then fills the queue with similar songs. */
+  async startRadio(track: Track): Promise<void> {
+    this.playTracks([track]);
+    try {
+      const similar = (await api.autoplayTracks(track)).filter((x) => x.id !== track.id && !library.isHidden(x)).slice(0, RADIO_BATCH);
+      if (this.current?.track.id === track.id) this.setQueue(Q.addToQueue(this.queue, similar));
+      ui.toast(t("toast.radioStarted", { title: track.title }), "radio");
+    } catch {
+      ui.toast(t("toast.autoplayFailed"), "alert");
+    }
   }
 
   playNextTracks(tracks: Track[]): void {
@@ -193,7 +212,7 @@ class Player {
   /** Every queue change goes through here: it saves, and drops a preload that no longer fits. */
   private setQueue(q: Q.QueueState): void {
     this.queue = q;
-    const expected = Q.nextIndex(q, true);
+    const expected = Q.nextIndex(q, true, this.skipHidden);
     const expectedUid = expected == null ? null : q.items[expected]?.uid;
     if (this.preloadedUid && this.preloadedUid !== expectedUid) {
       this.engine.clearNext();
@@ -279,7 +298,7 @@ class Player {
     this.preloadedUid = null;
     if (!item) return;
     this.loading = autoplay;
-    this.standIn = null;
+    this.via = null;
     this.positionMs = startMs;
     this.durationMs = item.track.durationMs ?? 0;
     api.mediaTrack(mediaInfo(item.track)).catch(() => {});
@@ -302,7 +321,7 @@ class Player {
   }
 
   private applyPrepared(item: Q.QueueItem, prepared: Prepared): void {
-    this.standIn = prepared.standIn;
+    this.via = prepared.via;
     if (prepared.standIn) {
       ui.toast(t("toast.standIn", { source: sourceLabel(prepared.standIn.source), title: item.track.title }), "info");
     }
@@ -334,16 +353,20 @@ class Player {
 
   /** Tells the backend to start downloading the next song now, so it's ready in time. */
   private prefetchFollowing(): void {
-    const i = Q.nextIndex(this.queue, true);
+    const i = Q.nextIndex(this.queue, true, this.skipHidden);
     const next = i == null ? null : this.queue.items[i];
     if (next && next.uid !== this.current?.uid) api.prefetchTrack(next.track, settings.values.quality).catch(() => {});
+    const imported = this.upcoming.slice(0, PREMATCH_AHEAD).map((x) => x.track).filter((x) => IMPORT_ONLY.has(x.source) && !x.via);
+    if (imported.length) api.prematch(imported).catch(() => {});
   }
 
+  private skipHidden = (item: Q.QueueItem): boolean => library.isHidden(item.track);
+
   private async preloadNext(): Promise<void> {
-    let i = Q.nextIndex(this.queue, true);
+    let i = Q.nextIndex(this.queue, true, this.skipHidden);
     if (i == null && settings.values.autoplay && this.queue.repeat === "off") {
       await this.extendWithAutoplay();
-      i = Q.nextIndex(this.queue, true);
+      i = Q.nextIndex(this.queue, true, this.skipHidden);
     }
     if (i == null) return;
     const item = this.queue.items[i];
@@ -351,7 +374,7 @@ class Player {
     try {
       const prepared = await this.prepare(item.track);
       // The queue may have changed while we waited; only preload if this is still next.
-      if (token !== this.loadToken || Q.nextIndex(this.queue, true) !== this.queue.items.indexOf(item)) return;
+      if (token !== this.loadToken || Q.nextIndex(this.queue, true, this.skipHidden) !== this.queue.items.indexOf(item)) return;
       this.engine.preloadNext(prepared.url, prepared.loudnessDb);
       this.preloadedUid = item.uid;
     } catch {
@@ -365,7 +388,7 @@ class Player {
     this.autoplayBusy = true;
     try {
       const known = new Set(this.queue.items.map((i) => i.track.id));
-      const found = (await api.autoplayTracks(seed)).filter((t) => !known.has(t.id)).slice(0, AUTOPLAY_BATCH);
+      const found = (await api.autoplayTracks(seed)).filter((t) => !known.has(t.id) && !library.isHidden(t)).slice(0, AUTOPLAY_BATCH);
       if (found.length === 0) return false;
       this.setQueue(Q.addToQueue(this.queue, found));
       return true;
@@ -399,7 +422,7 @@ class Player {
     this.setQueue({ ...this.queue, index });
     this.loadedUid = item.uid;
     this.loadToken++;
-    this.standIn = null;
+    this.via = null;
     this.positionMs = 0;
     this.durationMs = item.track.durationMs ?? 0;
     this.retriedUid = null;
@@ -408,9 +431,9 @@ class Player {
   }
 
   private async onEnded(): Promise<void> {
-    let i = Q.nextIndex(this.queue, true);
+    let i = Q.nextIndex(this.queue, true, this.skipHidden);
     if (i == null && settings.values.autoplay && this.queue.repeat === "off" && (await this.extendWithAutoplay())) {
-      i = Q.nextIndex(this.queue, true);
+      i = Q.nextIndex(this.queue, true, this.skipHidden);
     }
     if (i == null) {
       this.playing = false;
@@ -474,7 +497,7 @@ function mediaInfo(track: Track) {
 }
 
 export function sourceLabel(source: string): string {
-  return source === "soundcloud" ? t("source.soundcloud") : t("source.youtube");
+  return source === "soundcloud" ? t("source.soundcloud") : source === "local" ? t("source.local") : t("source.youtube");
 }
 
 export const player = new Player();

@@ -65,7 +65,83 @@ CREATE TABLE stream_cache(
     size INTEGER,
     loudness_db REAL
 );
-"#, "ALTER TABLE stream_cache ADD COLUMN user_agent TEXT;"];
+"#, "ALTER TABLE stream_cache ADD COLUMN user_agent TEXT;", r#"
+CREATE TABLE matches(
+    source TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    track_id TEXT,
+    manual INTEGER NOT NULL DEFAULT 0,
+    score REAL NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(source, source_id)
+);
+CREATE TABLE folders(
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    parent_id TEXT,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER
+);
+CREATE TABLE playlists(
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    cover TEXT,
+    folder_id TEXT,
+    origin TEXT,
+    origin_url TEXT,
+    report TEXT,
+    plays INTEGER NOT NULL DEFAULT 0,
+    position INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    deleted_at INTEGER
+);
+CREATE INDEX playlists_account ON playlists(account_id);
+CREATE TABLE playlist_items(
+    id TEXT PRIMARY KEY,
+    playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+    track_id TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    added_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX playlist_items_list ON playlist_items(playlist_id, position);
+CREATE TABLE likes(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    track_id TEXT NOT NULL,
+    liked_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, track_id)
+);
+CREATE TABLE hidden(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    value TEXT NOT NULL,
+    label TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, kind, value)
+);
+CREATE TABLE follows(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,
+    artist_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    avatar TEXT,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, source, artist_id)
+);
+CREATE TABLE local_files(
+    track_id TEXT PRIMARY KEY,
+    path TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    mtime INTEGER NOT NULL,
+    trashed_at INTEGER,
+    trash_path TEXT
+);
+"#];
 
 impl Db {
     pub fn open(path: &Path) -> AppResult<Self> {
@@ -117,15 +193,7 @@ impl Db {
     }
 
     pub fn upsert_track(&self, t: &Track) -> AppResult<()> {
-        let data = serde_json::to_string(t)?;
-        self.with(|c| {
-            c.execute(
-                "INSERT INTO tracks(id,source,source_id,data,updated_at) VALUES(?1,?2,?3,?4,?5)
-                 ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
-                params![t.id, t.source, t.source_id, data, now_secs()],
-            )
-        })?;
-        Ok(())
+        self.with(|c| upsert_track_conn(c, t))
     }
 
     pub fn track(&self, id: &str) -> AppResult<Option<Track>> {
@@ -133,6 +201,20 @@ impl Db {
             self.with(|c| c.query_row("SELECT data FROM tracks WHERE id=?1", [id], |r| r.get(0)).optional())?;
         Ok(data.and_then(|d| serde_json::from_str(&d).ok()))
     }
+}
+
+/// Stores a track's metadata (shared by all accounts). The per-list "via" field is derived,
+/// never stored.
+pub fn upsert_track_conn(c: &Connection, t: &Track) -> rusqlite::Result<()> {
+    let mut stored = t.clone();
+    stored.via = None;
+    let data = serde_json::to_string(&stored).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    c.execute(
+        "INSERT INTO tracks(id,source,source_id,data,updated_at) VALUES(?1,?2,?3,?4,?5)
+         ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+        params![t.id, t.source, t.source_id, data, now_secs()],
+    )?;
+    Ok(())
 }
 
 fn migrate(conn: &Connection) -> rusqlite::Result<()> {

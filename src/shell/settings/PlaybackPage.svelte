@@ -5,6 +5,7 @@
   import { t } from "../../lib/i18n/index.svelte";
   import { player } from "../../lib/stores/player.svelte";
   import { settings } from "../../lib/stores/settings.svelte";
+  import HiddenList from "./HiddenList.svelte";
   import SettingRow from "./SettingRow.svelte";
 
   let { visible }: { visible: (label: Key, desc: Key) => boolean } = $props();
@@ -93,6 +94,12 @@
   </div>
 {/if}
 
+{#if visible("settings.hidden", "settings.hiddenDesc")}
+  <h3>{t("settings.hidden")}</h3>
+  <p class="desc">{t("settings.hiddenDesc")}</p>
+  <div class="card"><HiddenList /></div>
+{/if}
+
 <style>
   h3 {
     margin: 22px 2px 10px;
@@ -101,6 +108,11 @@
   }
   h3:first-child {
     margin-top: 0;
+  }
+  .desc {
+    margin: -4px 2px 10px;
+    font-size: var(--fs-xs);
+    color: var(--text-3);
   }
   .card {
     border-radius: var(--r-lg);

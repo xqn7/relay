@@ -1,7 +1,20 @@
 // Navigation, overlays and toasts.
 import type { IconName } from "../icons";
 
-export type Route = { name: "home" } | { name: "library" } | { name: "artist"; artistId: string; artistName: string };
+import type { SearchSource } from "../api";
+
+export type Route =
+  | { name: "home" }
+  | { name: "library"; tab?: LibraryTab }
+  | { name: "playlist"; id: string }
+  | { name: "liked" }
+  | { name: "local" }
+  | { name: "folder"; id: string }
+  | { name: "trash" }
+  | { name: "album"; source: SearchSource; id: string }
+  | { name: "artist"; source: SearchSource; id: string; artistName: string };
+
+export type LibraryTab = "all" | "playlists" | "artists";
 
 interface Entry {
   route: Route;
@@ -15,6 +28,8 @@ export interface Toast {
   icon?: IconName;
   /** 0..1 for a progress bar; the toast stays until progress is cleared. */
   progress?: number;
+  /** A button on the toast, e.g. "Undo". */
+  action?: { label: string; run: () => void };
 }
 
 const TOAST_MS = 3600;
@@ -28,6 +43,10 @@ class UiStore {
   searchOpen = $state(false);
   settingsOpen = $state(false);
   queueOpen = $state(false);
+  /** Files are being dragged over the window from outside. */
+  filesOver = $state(false);
+  /** Art of the open artist/album page; the backdrop takes its colors while it's open. */
+  heroCover = $state<string | null>(null);
   toasts = $state<Toast[]>([]);
 
   get entry(): Entry {
@@ -41,6 +60,20 @@ class UiStore {
   }
   get canForward(): boolean {
     return this.pos < this.stack.length - 1;
+  }
+
+  /** Set by the shell: reads the page's scroll position, remembered when leaving a page. */
+  scrollTop: () => number = () => 0;
+
+  /** Goes to a page from anywhere (links, menus, tiles). */
+  open(route: Route): void {
+    this.searchOpen = false;
+    this.go(route, this.scrollTop());
+  }
+
+  /** Replaces the current page without adding history (e.g. after its playlist was deleted). */
+  replace(route: Route): void {
+    this.stack[this.pos] = { route, key: nextId++, scroll: 0 };
   }
 
   go(route: Route, scrollFrom: number): void {
@@ -71,22 +104,24 @@ class UiStore {
     this.searchOpen = this.settingsOpen = this.queueOpen = false;
   }
 
-  toast(text: string, icon?: IconName): number {
+  toast(text: string, icon?: IconName, action?: Toast["action"]): number {
     const id = nextId++;
-    this.toasts = [...this.toasts.slice(-2), { id, text, icon }];
-    setTimeout(() => this.dismiss(id), TOAST_MS);
+    this.toasts = [...this.toasts.slice(-2), { id, text, icon, action }];
+    // Toasts with a button stay a little longer, so there's time to reach it.
+    setTimeout(() => this.dismiss(id), action ? TOAST_MS * 2 : TOAST_MS);
     return id;
   }
 
   /** A toast with a progress bar, updated in place; call with null progress to finish it. */
-  progressToast(id: number | null, text: string, progress: number | null): number {
+  progressToast(id: number | null, text: string, progress: number | null, action?: Toast["action"]): number {
     if (id != null && this.toasts.some((t) => t.id === id)) {
-      this.toasts = this.toasts.map((t) => (t.id === id ? { ...t, text, progress: progress ?? undefined } : t));
-      if (progress == null) setTimeout(() => this.dismiss(id), TOAST_MS);
+      this.toasts = this.toasts.map((t) => (t.id === id ? { ...t, text, progress: progress ?? undefined, action } : t));
+      if (progress == null) setTimeout(() => this.dismiss(id), action ? TOAST_MS * 2 : TOAST_MS);
       return id;
     }
     const newId = nextId++;
-    this.toasts = [...this.toasts.slice(-2), { id: newId, text, progress: progress ?? undefined }];
+    this.toasts = [...this.toasts.slice(-2), { id: newId, text, progress: progress ?? undefined, action }];
+    if (progress == null) setTimeout(() => this.dismiss(newId), action ? TOAST_MS * 2 : TOAST_MS);
     return newId;
   }
 

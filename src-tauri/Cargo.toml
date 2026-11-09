@@ -25,6 +25,12 @@ password-hash = { version = "0.5", features = ["getrandom"] }
 rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots"] }
 sha2 = "0.10"
 tauri-plugin-single-instance = "2"
+# Native folder/file pickers (Add files, Local music folder, cover image).
+tauri-plugin-dialog = "2"
+# Reads and writes tags and embedded covers for every supported audio format.
+lofty = "0.25"
+# Event-based watching of the Local music folder (ReadDirectoryChangesW), no polling.
+notify = { version = "8", default-features = false }
 windows-core = "0.62"
 windows = { version = "0.62", features = ["Media", "Foundation", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_System_Com", "Win32_Media_Audio", "Win32_UI_Shell_PropertiesSystem"] }
 

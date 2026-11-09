@@ -10,6 +10,8 @@
   import { t } from "../lib/i18n/index.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+  import { dialogs } from "../lib/stores/dialogs.svelte";
+  import { library } from "../lib/stores/library.svelte";
 
   // A soft spring: overshoots slightly, then settles.
   const spring = (x: number) => {
@@ -45,6 +47,21 @@
 
   function endDrag() {
     drag = null;
+  }
+
+  function saveQueue() {
+    const tracks = player.queue.items.map((i) => i.track);
+    dialogs.open({
+      kind: "prompt",
+      title: t("queue.save"),
+      label: t("playlist.name"),
+      value: t("queue.defaultName"),
+      confirm: t("playlist.create"),
+      onConfirm: async (name) => {
+        const id = await library.createPlaylist(name, tracks);
+        if (id) ui.toast(t("toast.addedToPlaylist", { name, n: tracks.length }), "check", { label: t("toast.open"), run: () => ui.open({ name: "playlist", id }) });
+      },
+    });
   }
 </script>
 
@@ -101,7 +118,7 @@
 
   <footer>
     <Button variant="secondary" icon="trash" disabled={player.upcoming.length === 0} onclick={() => player.clearUpcoming()}>{t("queue.clear")}</Button>
-    <Button variant="ghost" icon="plus" disabled title={t("queue.saveSoon")}>{t("queue.save")}</Button>
+    <Button variant="ghost" icon="plus" disabled={!player.current} onclick={saveQueue}>{t("queue.save")}</Button>
   </footer>
 </aside>
 

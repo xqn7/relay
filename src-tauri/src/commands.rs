@@ -13,13 +13,13 @@ use serde_json::{Map, Value};
 use std::sync::Arc;
 use tauri::State;
 
-type St<'a> = State<'a, Arc<AppState>>;
+pub type St<'a> = State<'a, Arc<AppState>>;
 
 const MAX_SETTING_BYTES: usize = 64 * 1024;
 const MAX_QUEUE_BYTES: usize = 4 * 1024 * 1024;
 const HISTORY_LIMIT: i64 = 12;
 
-fn current(state: &AppState) -> AppResult<Account> {
+pub fn current(state: &AppState) -> AppResult<Account> {
     state.account.lock().unwrap_or_else(|p| p.into_inner()).clone().ok_or_else(|| AppError::new("signed_out", ""))
 }
 
@@ -202,7 +202,10 @@ pub async fn autoplay_tracks(state: St<'_>, track: Track) -> AppResult<Vec<Track
         let found = state.yt.search(&query, SearchKind::Songs).await?;
         found.tracks.first().map(|t| t.source_id.clone()).ok_or_else(|| AppError::new("no_match", "no seed song"))?
     };
-    state.yt.radio(&seed).await
+    let hidden = crate::library::hidden(&state.db, &current(&state)?.id)?;
+    let mut tracks = state.yt.radio(&seed).await?;
+    tracks.retain(|t| !crate::library::is_hidden(&hidden, t));
+    Ok(tracks)
 }
 
 #[derive(Serialize)]
@@ -210,8 +213,11 @@ pub async fn autoplay_tracks(state: St<'_>, track: Track) -> AppResult<Vec<Track
 pub struct Prepared {
     url: String,
     loudness_db: Option<f32>,
-    /// Set when another source's version plays instead of the requested one.
+    /// Set when another source's version plays because the song's own source failed.
     stand_in: Option<Track>,
+    /// The song whose audio plays, when it isn't the requested one (imported songs play
+    /// their YouTube/SoundCloud match).
+    via: Option<Track>,
 }
 
 #[tauri::command]
@@ -224,7 +230,8 @@ pub async fn prepare_track(state: St<'_>, track: Track, quality: Quality, retry:
     Ok(Prepared {
         url: streams::stream_url(&track.id),
         loudness_db: buf.loudness_db,
-        stand_in: (buf.played.id != track.id).then(|| buf.played.clone()),
+        stand_in: buf.stand_in.then(|| buf.played.clone()),
+        via: (buf.played.id != track.id).then(|| buf.played.clone()),
     })
 }
 

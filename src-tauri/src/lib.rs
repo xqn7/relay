@@ -5,7 +5,13 @@ mod covers;
 mod db;
 mod error;
 mod http;
+mod importer;
+mod library;
+mod library_commands;
+mod local;
+mod m3u;
 mod matcher;
+mod matching;
 mod media;
 mod resolver;
 mod sources;
@@ -18,8 +24,9 @@ use db::Db;
 use http::Http;
 use media::MediaControls;
 use sources::{soundcloud::SoundCloud, youtube::YouTube};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use streams::Streams;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tools::Tools;
@@ -34,6 +41,10 @@ pub struct AppState {
     pub media: MediaControls,
     pub covers: covers::Covers,
     pub account: Mutex<Option<Account>>,
+    pub tools: Arc<Tools>,
+    pub local: local::LocalMusic,
+    pub imports: importer::Imports,
+    pub artist_cache: Mutex<HashMap<String, (Instant, sources::ArtistPage)>>,
 }
 
 /// Only the app's own pages may load in the window; everything else opens in the browser.
@@ -60,7 +71,6 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .center()
         .background_color(tauri::window::Color(10, 10, 11, 255))
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
-        .disable_drag_drop_handler()
         // WebView2 would otherwise register its own media session and grab the media keys,
         // pausing the <audio> elements behind the app's back. Relay's own SMTC session handles
         // them instead. The first three flags are wry's defaults, which this setting replaces.
@@ -74,7 +84,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let http = Arc::new(Http::new());
     let tools = Arc::new(Tools::new(local_dir.join("tools"), http.clone(), handle.clone()));
     let state = AppState {
-        yt: YouTube::new(&local_dir.join("youtube"), tools)?,
+        local: local::LocalMusic::new(&handle, &db)?,
+        imports: importer::Imports::default(),
+        artist_cache: Mutex::new(HashMap::new()),
+        yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
+        tools,
         sc: SoundCloud::new(http.clone(), db.clone()),
         streams: Streams::new(local_dir.join("buffer"))?,
         media: MediaControls::attach(&handle, window.hwnd()?),
@@ -84,12 +98,28 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         db,
         http,
     };
-    app.manage(Arc::new(state));
+    let state = Arc::new(state);
+    app.manage(state.clone());
     audio_devices::watch(handle.clone());
+    tauri::async_runtime::spawn(local::start(state.clone()));
 
     // Closing asks the UI to save the queue and position first; if the UI doesn't answer
     // within a moment (e.g. it crashed), quit anyway.
     window.on_window_event(move |event| {
+        // Files dragged in from anywhere go to Local music. The page only shows the reaction;
+        // the paths never pass through the webview.
+        if let tauri::WindowEvent::DragDrop(drop) = event {
+            let kind = match drop {
+                tauri::DragDropEvent::Enter { .. } => "enter",
+                tauri::DragDropEvent::Over { .. } => return,
+                tauri::DragDropEvent::Drop { paths, .. } => {
+                    local::add(state.clone(), paths.clone());
+                    "drop"
+                }
+                _ => "leave",
+            };
+            let _ = handle.emit("file-drag", kind);
+        }
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
             let _ = handle.emit("app-closing", ());
@@ -108,6 +138,7 @@ pub fn run() {
     tauri::Builder::default()
         // A second launch (desktop shortcut, Start menu) brings the running player forward
         // instead of starting another one that would fight over the database and audio.
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
@@ -119,8 +150,11 @@ pub fn run() {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {
                 let state = app.state::<Arc<AppState>>().inner().clone();
-                let response = if request.uri().path().starts_with("/img/") {
+                let path = request.uri().path();
+                let response = if path.starts_with("/img/") {
                     covers::serve(state, request).await
+                } else if path.starts_with("/art/") {
+                    covers::serve_local(&state, path)
                 } else {
                     streams::serve(state, request).await
                 };
@@ -150,6 +184,57 @@ pub fn run() {
             commands::media_state,
             commands::open_external,
             commands::exit_app,
+            library_commands::library_overview,
+            library_commands::playlist_get,
+            library_commands::playlist_create,
+            library_commands::playlist_rename,
+            library_commands::playlist_set_folder,
+            library_commands::playlist_delete,
+            library_commands::playlist_add,
+            library_commands::playlist_remove,
+            library_commands::playlist_restore_items,
+            library_commands::playlist_move,
+            library_commands::playlist_played,
+            library_commands::playlist_merge,
+            library_commands::folder_create,
+            library_commands::folder_rename,
+            library_commands::folder_set_parent,
+            library_commands::folder_delete,
+            library_commands::like_set,
+            library_commands::liked_list,
+            library_commands::liked_ids,
+            library_commands::hidden_set,
+            library_commands::hidden_list,
+            library_commands::follow_set,
+            library_commands::follows_list,
+            library_commands::followed_releases,
+            library_commands::artist_page,
+            library_commands::artist_find,
+            library_commands::album_page,
+            library_commands::soundcloud_track,
+            library_commands::trash_list,
+            library_commands::trash_restore,
+            library_commands::trash_delete,
+            library_commands::trash_empty,
+            library_commands::trash_purge_expired,
+            library_commands::import_preview,
+            library_commands::import_start,
+            library_commands::import_cancel,
+            library_commands::import_liked_links,
+            library_commands::import_liked_file,
+            library_commands::import_m3u_pick,
+            library_commands::export_m3u,
+            library_commands::match_candidates,
+            library_commands::match_get,
+            library_commands::match_set,
+            library_commands::prematch,
+            library_commands::local_list,
+            library_commands::local_add_dialog,
+            library_commands::local_edit,
+            library_commands::local_remove,
+            library_commands::local_folder,
+            library_commands::local_folder_pick,
+            library_commands::local_open_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

@@ -1,30 +1,64 @@
 <script lang="ts">
-  import { artistLine, formatTime, type Track } from "../api";
+  import { formatTime, type Track } from "../api";
   import { t } from "../i18n/index.svelte";
+  import { openArtist, playsFrom } from "../navigate";
   import { player } from "../stores/player.svelte";
-  import { openTrackMenu } from "../trackMenu";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
+  import LikeButton from "./LikeButton.svelte";
   import SourceBadge from "./SourceBadge.svelte";
 
-  let { tracks, index, compact = false }: { tracks: Track[]; index: number; compact?: boolean } = $props();
-  const track = $derived(tracks[index]);
+  let {
+    track,
+    selected = false,
+    compact = false,
+    showAlbum = false,
+    hidden = false,
+    onactivate,
+    onselect,
+    onmenu,
+    onpress,
+  }: {
+    track: Track;
+    selected?: boolean;
+    compact?: boolean;
+    showAlbum?: boolean;
+    /** Marked as "Don't play": shown dimmed. */
+    hidden?: boolean;
+    onactivate: () => void;
+    onselect?: (e: MouseEvent) => void;
+    onmenu: (e: MouseEvent) => void;
+    onpress?: (e: PointerEvent) => void;
+  } = $props();
+
   const isCurrent = $derived(player.current?.track.id === track.id);
+  const unmatched = $derived(track.via === "none");
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Enter") player.activate(tracks, index);
+    if (e.key === "Enter") onactivate();
+  }
+
+  function artistClick(e: MouseEvent, i: number) {
+    e.stopPropagation();
+    openArtist(track.artists[i], track.source);
   }
 </script>
 
 <div
   class="row"
   class:current={isCurrent}
+  class:selected
   class:compact
+  class:dim={unmatched || hidden}
+  class:with-album={showAlbum}
   role="button"
   tabindex="0"
-  ondblclick={() => player.activate(tracks, index)}
+  aria-pressed={selected}
+  onclick={(e) => onselect?.(e)}
+  ondblclick={onactivate}
   onkeydown={onKey}
-  oncontextmenu={(e) => openTrackMenu(e, tracks, index)}>
+  onpointerdown={(e) => onpress?.(e)}
+  oncontextmenu={onmenu}>
   <div class="art">
     <Cover src={track.cover} size={compact ? 40 : 44} />
     {#if isCurrent && player.playing}
@@ -34,12 +68,17 @@
   <div class="text">
     <div class="title truncate">{track.title}</div>
     <div class="artist">
-      <SourceBadge source={track.source} />
-      <span class="truncate">{artistLine(track)}</span>
+      <SourceBadge source={playsFrom(track)} />
+      <span class="truncate">
+        {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="link" tabindex="-1" onclick={(e) => artistClick(e, i)}>{a.name}</button>{/each}
+        {#if unmatched}<span class="note"> · {t("track.noMatch")}</span>{/if}
+      </span>
     </div>
   </div>
+  {#if showAlbum}<span class="album truncate">{track.album?.name ?? ""}</span>{/if}
+  <LikeButton {track} quiet />
   <span class="time">{formatTime(track.durationMs)}</span>
-  <button class="more" aria-label={t("menu.more")} onclick={(e) => openTrackMenu(e, tracks, index)}>
+  <button class="more" aria-label={t("menu.more")} onclick={(e) => (e.stopPropagation(), onmenu(e))}>
     <Icon name="more" size={18} />
   </button>
 </div>
@@ -47,21 +86,37 @@
 <style>
   .row {
     display: grid;
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
     align-items: center;
     gap: var(--s3);
-    padding: 6px var(--s2) 6px 8px;
+    height: 58px;
+    padding: 0 var(--s2) 0 8px;
     border-radius: var(--r-md);
     outline: none;
     transition: background var(--t-fast) var(--ease);
+    /* Rows off screen skip layout and paint, which keeps long lists smooth. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 58px;
+  }
+  .row.with-album {
+    grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto;
   }
   .row:hover,
   .row:focus-visible {
     background: var(--hover);
   }
+  .row.selected {
+    background: var(--selected);
+  }
   .compact {
-    padding: 4px 6px;
+    height: 50px;
+    padding: 0 6px;
     gap: 10px;
+    contain-intrinsic-size: auto 50px;
+  }
+  .dim .text,
+  .dim .art {
+    opacity: 0.5;
   }
   .art {
     position: relative;
@@ -85,7 +140,29 @@
     font-size: var(--fs-sm);
     color: var(--text-2);
   }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+  }
+  .link:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .note {
+    color: var(--text-3);
+  }
+  .album {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
   .time {
+    min-width: 38px;
+    text-align: right;
     font-size: var(--fs-sm);
     color: var(--text-3);
     font-variant-numeric: tabular-nums;
@@ -103,7 +180,8 @@
     transition: opacity var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
   .row:hover .more,
-  .row:focus-within .more {
+  .row:focus-within .more,
+  .row.selected .more {
     opacity: 1;
   }
   .more:hover {
@@ -142,6 +220,14 @@
     }
     50% {
       transform: scaleY(1);
+    }
+  }
+  @media (max-width: 1100px) {
+    .row.with-album {
+      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    }
+    .album {
+      display: none;
     }
   }
 </style>

@@ -8,6 +8,7 @@
 
   // Keep the menu inside the window, flipping it left/up when it would overflow.
   $effect(() => {
+    void menu.items;
     if (!menu.open || !el) return;
     const r = el.getBoundingClientRect();
     pos = {
@@ -34,16 +35,18 @@
 {#if menu.open}
   <div class="catcher" role="presentation" onpointerdown={() => menu.close()} oncontextmenu={(e) => (e.preventDefault(), menu.close())}></div>
   <div class="menu glass" role="menu" bind:this={el} style:left="{pos.left}px" style:top="{pos.top}px" transition:fade={{ duration: 110 }}>
-    {#each menu.items as item (item.label)}
+    {#each menu.items as item, i (i + item.label)}
+      {#if item.divider}<div class="divider" role="separator"></div>{/if}
       <button
         role="menuitem"
         disabled={item.disabled}
         onclick={() => {
-          menu.close();
+          if (!item.submenu) menu.close();
           item.action();
         }}>
         <Icon name={item.icon} size={16} />
-        <span>{item.label}</span>
+        <span class="truncate">{item.label}</span>
+        {#if item.submenu}<span class="more"><Icon name="forward" size={14} /></span>{/if}
       </button>
     {/each}
   </div>
@@ -55,10 +58,22 @@
     inset: 0;
     z-index: 90;
   }
+  .divider {
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--hairline);
+  }
+  .more {
+    margin-left: auto;
+    display: grid;
+  }
   .menu {
     position: fixed;
     z-index: 91;
     min-width: 200px;
+    max-width: 300px;
+    max-height: min(520px, calc(100vh - 16px));
+    overflow-y: auto;
     padding: 5px;
     border-radius: var(--r-md);
     background: rgba(24, 24, 27, 0.78);

@@ -68,3 +68,15 @@ pub async fn serve(state: Arc<AppState>, req: Request<Vec<u8>>) -> Response<Vec<
         None => respond(StatusCode::BAD_GATEWAY, "text/plain", b"cover unavailable".to_vec()),
     }
 }
+
+/// Covers read from Local music files, served from the app's art folder.
+pub fn serve_local(state: &AppState, path: &str) -> Response<Vec<u8>> {
+    let file = path.trim_start_matches("/art/");
+    match state.local.art_path(file).and_then(|p| std::fs::read(p).ok()) {
+        Some(bytes) => {
+            let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) { "image/png" } else { "image/jpeg" };
+            respond(StatusCode::OK, mime, bytes)
+        }
+        None => respond(StatusCode::NOT_FOUND, "text/plain", b"no cover".to_vec()),
+    }
+}

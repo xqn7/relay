@@ -1,7 +1,11 @@
 //! Shared source interface. Each service lives in its own module, so when a service changes,
 //! the fix stays inside that one file.
 
+pub mod apple;
+pub mod deezer;
+pub mod links;
 pub mod soundcloud;
+pub mod spotify;
 pub mod youtube;
 
 use crate::error::AppResult;
@@ -9,6 +13,16 @@ use serde::{Deserialize, Serialize};
 
 pub const YOUTUBE: &str = "youtube";
 pub const SOUNDCLOUD: &str = "soundcloud";
+pub const SPOTIFY: &str = "spotify";
+pub const DEEZER: &str = "deezer";
+pub const APPLE: &str = "apple";
+pub const LOCAL: &str = "local";
+
+/// Services used only to import lists. Their songs play through a matched YouTube Music
+/// (or SoundCloud) track, never their own audio.
+pub fn is_import_only(source: &str) -> bool {
+    matches!(source, SPOTIFY | DEEZER | APPLE)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +54,10 @@ pub struct Track {
     #[serde(default)]
     pub is_video: bool,
     pub link: Option<String>,
+    /// For imported songs: the source the matched audio comes from, or "none" when nothing
+    /// matched. Filled in when lists are read from the library; never stored.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
 }
 
 impl Track {
@@ -57,7 +75,26 @@ impl Track {
             && self.source_id.len() < 128
             && !self.title.trim().is_empty()
             && self.id == Self::make_id(&self.source, &self.source_id)
-            && (self.source == YOUTUBE || self.source == SOUNDCLOUD)
+            && matches!(self.source.as_str(), YOUTUBE | SOUNDCLOUD | SPOTIFY | DEEZER | APPLE | LOCAL)
+            && self.title.len() < 1024
+            && self.artists.len() < 64
+    }
+
+    /// A track as an import service describes it, before matching.
+    pub fn imported(source: &str, source_id: &str, title: &str, artists: Vec<String>, duration_ms: Option<u64>, cover: Option<String>, album: Option<String>) -> Self {
+        Track {
+            id: Self::make_id(source, source_id),
+            source: source.into(),
+            source_id: source_id.into(),
+            title: title.trim().into(),
+            artists: artists.into_iter().filter(|a| !a.trim().is_empty()).map(|name| ArtistRef { id: None, name: name.trim().into() }).collect(),
+            album: album.map(|name| AlbumRef { id: String::new(), name }),
+            duration_ms,
+            cover: cover.filter(|c| c.starts_with("https://")),
+            is_video: false,
+            link: None,
+            via: None,
+        }
     }
 }
 
@@ -71,6 +108,40 @@ pub struct Collection {
     pub title: String,
     pub subtitle: String,
     pub cover: Option<String>,
+    pub year: Option<u16>,
+}
+
+/// An album (or EP/single) page.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumPage {
+    pub source: String,
+    pub id: String,
+    pub title: String,
+    pub artists: Vec<ArtistRef>,
+    pub cover: Option<String>,
+    pub year: Option<u16>,
+    /// "album", "ep" or "single"
+    pub kind: String,
+    pub tracks: Vec<Track>,
+    pub link: Option<String>,
+}
+
+/// An artist page: hero, about text, top songs and releases.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArtistPage {
+    pub source: String,
+    pub id: String,
+    pub name: String,
+    pub avatar: Option<String>,
+    pub banner: Option<String>,
+    pub about: Option<String>,
+    pub top_tracks: Vec<Track>,
+    pub albums: Vec<Collection>,
+    pub singles: Vec<Collection>,
+    pub similar: Vec<ArtistCard>,
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +151,33 @@ pub struct ArtistCard {
     pub id: String,
     pub name: String,
     pub avatar: Option<String>,
+}
+
+/// Why a song from an imported list isn't in the library.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Skipped {
+    pub title: String,
+    pub artist: String,
+    /// "deleted", "private", "unavailable", "no_match"
+    pub reason: String,
+}
+
+/// A playlist, album or single song read from an import link.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteList {
+    /// "<service>:<kind>:<id>", the same for every link to this list, so re-imports update it.
+    pub origin: String,
+    pub service: String,
+    pub kind: String,
+    pub title: String,
+    pub owner: String,
+    pub cover: Option<String>,
+    pub tracks: Vec<Track>,
+    pub skipped: Vec<Skipped>,
+    /// The service only gave part of the list (e.g. Spotify's 100-song embed page).
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Default)]

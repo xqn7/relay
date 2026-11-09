@@ -60,6 +60,7 @@ pub fn clean_title(title: &str) -> String {
         }
     }
     let s = strip_after(&s, &["prod. by", "prod by", "prod.", "(prod"]);
+    let s = strip_dash_suffix(&s);
     let words: Vec<&str> = s
         .split_whitespace()
         .filter(|w| !w.starts_with('@') && !w.starts_with("http") && !w.contains(".com"))
@@ -87,6 +88,15 @@ fn is_junk_group(inner: &str) -> bool {
         || t.starts_with("from ")
 }
 
+/// Spotify and Deezer write edition notes after a dash: "Song - Remastered 2011".
+fn strip_dash_suffix(s: &str) -> String {
+    const NOTES: &[&str] = &["remaster", "deluxe", "mono", "stereo", "single version", "album version", "bonus track", "anniversary"];
+    match s.rfind(" - ") {
+        Some(i) if NOTES.iter().any(|n| s[i..].contains(n)) => s[..i].to_string(),
+        _ => s.to_string(),
+    }
+}
+
 fn strip_after(s: &str, markers: &[&str]) -> String {
     markers.iter().fold(s.to_string(), |acc, m| match acc.find(m) {
         Some(i) => acc[..i].to_string(),
@@ -108,9 +118,41 @@ pub fn version_tags(title: &str) -> BTreeSet<&'static str> {
         .collect()
 }
 
-/// Lowercase alphanumeric words; accents are kept so "Café" still matches "café".
+/// Cyrillic letters in Latin (a simple, common transliteration), so "Элевен Эйт" can match
+/// "Eleven Eight" uploads.
+const CYRILLIC: &[(char, &str)] = &[
+    ('а', "a"), ('б', "b"), ('в', "v"), ('г', "g"), ('д', "d"), ('е', "e"), ('ё', "e"), ('ж', "zh"), ('з', "z"), ('и', "i"),
+    ('й', "y"), ('к', "k"), ('л', "l"), ('м', "m"), ('н', "n"), ('о', "o"), ('п', "p"), ('р', "r"), ('с', "s"), ('т', "t"),
+    ('у', "u"), ('ф', "f"), ('х', "kh"), ('ц', "ts"), ('ч', "ch"), ('ш', "sh"), ('щ', "shch"), ('ъ', ""), ('ы', "y"), ('ь', ""),
+    ('э', "e"), ('ю', "yu"), ('я', "ya"), ('і', "i"), ('ї', "yi"), ('є', "ye"), ('ґ', "g"), ('ў', "u"),
+];
+
+/// Accented Latin letters and their plain form. Covers Western, Central European and
+/// Turkish letters; anything else is kept as it is.
+const ACCENTS: &[(&str, &str)] = &[
+    ("àáâãäåāăą", "a"), ("æ", "ae"), ("çćĉċč", "c"), ("ďđ", "d"), ("èéêëēĕėęě", "e"), ("ĝğġģ", "g"), ("ĥħ", "h"),
+    ("ìíîïĩīĭįı", "i"), ("ĵ", "j"), ("ķ", "k"), ("ĺļľŀł", "l"), ("ñńņňŉ", "n"), ("òóôõöøōŏő", "o"), ("œ", "oe"),
+    ("ŕŗř", "r"), ("śŝşšș", "s"), ("ß", "ss"), ("ţťŧț", "t"), ("ùúûüũūŭůűų", "u"), ("ŵ", "w"), ("ýÿŷ", "y"), ("źżž", "z"), ("þ", "th"),
+];
+
+/// Lowercase, accents removed, Cyrillic written in Latin: the form both sides are compared in.
+pub fn fold(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars().flat_map(char::to_lowercase) {
+        if let Some((_, latin)) = CYRILLIC.iter().find(|(c, _)| *c == ch) {
+            out.push_str(latin);
+        } else if let Some((_, plain)) = ACCENTS.iter().find(|(set, _)| set.contains(ch)) {
+            out.push_str(plain);
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
+/// Folded alphanumeric words without filler.
 fn words(s: &str) -> BTreeSet<String> {
-    s.to_lowercase()
+    fold(s)
         .split(|c: char| !c.is_alphanumeric())
         .filter(|w| !w.is_empty() && !matches!(*w, "the" | "a" | "feat" | "ft" | "x" | "and"))
         .map(str::to_string)
@@ -149,13 +191,20 @@ pub fn score(target: &Track, candidate: &Track) -> f32 {
 }
 
 pub fn best_match<'a>(target: &Track, candidates: &'a [Track]) -> Option<&'a Track> {
-    candidates
+    best_scored(target, candidates).map(|(c, _)| c)
+}
+
+/// Best candidate and its score. Among near-equal candidates the plain song (audio upload)
+/// wins over a music video of the same recording, which may have an intro or skits.
+pub fn best_scored<'a>(target: &Track, candidates: &'a [Track]) -> Option<(&'a Track, f32)> {
+    let scored: Vec<(f32, &Track)> =
+        candidates.iter().filter(|c| c.id != target.id).map(|c| (score(target, c), c)).filter(|(s, _)| *s >= MIN_SCORE).collect();
+    let top = scored.iter().map(|(s, _)| *s).fold(f32::MIN, f32::max);
+    scored
         .iter()
-        .filter(|c| c.id != target.id)
-        .map(|c| (score(target, c), c))
-        .filter(|(s, _)| *s >= MIN_SCORE)
-        .max_by(|a, b| a.0.total_cmp(&b.0))
-        .map(|(_, c)| c)
+        .filter(|(s, _)| top - *s < 0.08)
+        .max_by(|a, b| (!a.1.is_video).cmp(&!b.1.is_video).then(a.0.total_cmp(&b.0)))
+        .map(|(s, c)| (*c, *s))
 }
 
 #[cfg(test)]
@@ -175,6 +224,7 @@ mod tests {
             cover: None,
             is_video: false,
             link: None,
+            via: None,
         }
     }
 
@@ -215,6 +265,31 @@ mod tests {
         let target = t("youtube", "a", "starly", "LONOWN, riserayss", 135);
         let cand = t("soundcloud", "1", "LONOWN, riserayss - starly", "some uploader", 136);
         assert!(score(&target, &cand) >= MIN_SCORE);
+    }
+
+    #[test]
+    fn transliterates_and_folds_accents() {
+        assert_eq!(fold("ФРУКТОВЫЙ"), "fruktovyy");
+        assert_eq!(fold("Beyoncé Señorita Ærø"), "beyonce senorita aero");
+        let target = t("spotify", "a", "ФРУКТОВЫЙ", "ЭЛЕВЕН ЭЙТ", 125);
+        let cand = t("youtube", "b", "Fruktovyy", "Eleven Eyt", 125);
+        assert!(score(&target, &cand) >= MIN_SCORE);
+    }
+
+    #[test]
+    fn drops_edition_notes_after_dash() {
+        assert_eq!(clean_title("Hey Jude - Remastered 2015"), "hey jude");
+        assert_eq!(clean_title("Song - Live"), "song - live");
+    }
+
+    #[test]
+    fn prefers_audio_over_music_video() {
+        let target = t("spotify", "a", "Fever", "Buckshot", 145);
+        let mut video = t("youtube", "v", "Fever (Official Video)", "Buckshot", 146);
+        video.is_video = true;
+        let audio = t("youtube", "s", "Fever", "Buckshot", 147);
+        let cands = vec![video, audio];
+        assert_eq!(best_match(&target, &cands).unwrap().source_id, "s");
     }
 
     #[test]

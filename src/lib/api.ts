@@ -1,8 +1,12 @@
 // Typed wrappers around the backend commands. The backend validates everything again.
 import { invoke } from "@tauri-apps/api/core";
 
-export type SourceId = "youtube" | "soundcloud";
-export const SOURCES: SourceId[] = ["youtube", "soundcloud"];
+/** Sources the search can query. */
+export type SearchSource = "youtube" | "soundcloud";
+export const SOURCES: SearchSource[] = ["youtube", "soundcloud"];
+/** Every source a song can come from. Spotify, Deezer and Apple Music songs play through a match. */
+export type SourceId = SearchSource | "spotify" | "deezer" | "apple" | "local";
+export const IMPORT_ONLY: ReadonlySet<string> = new Set(["spotify", "deezer", "apple"]);
 
 export interface ArtistRef {
   id: string | null;
@@ -20,26 +24,30 @@ export interface Track {
   cover: string | null;
   isVideo: boolean;
   link: string | null;
+  /** Imported songs: the source their audio plays from, or "none" when nothing matched. */
+  via?: SourceId | "none";
 }
 
 export interface Collection {
-  source: SourceId;
-  kind: "album" | "playlist";
+  source: SearchSource;
+  /** "track" only for SoundCloud singles on artist pages. */
+  kind: "album" | "playlist" | "track";
   id: string;
   title: string;
   subtitle: string;
   cover: string | null;
+  year: number | null;
 }
 
 export interface ArtistCard {
-  source: SourceId;
+  source: SearchSource;
   id: string;
   name: string;
   avatar: string | null;
 }
 
 export interface SearchResults {
-  source: SourceId;
+  source: SearchSource;
   tracks: Track[];
   albums: Collection[];
   artists: ArtistCard[];
@@ -59,6 +67,145 @@ export interface Prepared {
   url: string;
   loudnessDb: number | null;
   standIn: Track | null;
+  via: Track | null;
+}
+
+export interface PlaylistSummary {
+  id: string;
+  name: string;
+  cover: string | null;
+  folderId: string | null;
+  count: number;
+  durationMs: number;
+  origin: string | null;
+  originUrl: string | null;
+  plays: number;
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+export interface Overview {
+  playlists: PlaylistSummary[];
+  folders: Folder[];
+  likedCount: number;
+  followsCount: number;
+}
+
+export interface Item {
+  itemId: string;
+  addedAt: number;
+  track: Track;
+}
+
+export interface Skipped {
+  title: string;
+  artist: string;
+  reason: "deleted" | "private" | "unavailable" | "no_match";
+}
+
+export interface PlaylistDetail {
+  playlist: PlaylistSummary;
+  items: Item[];
+  skipped: Skipped[];
+}
+
+export interface Removed {
+  itemId: string;
+  trackId: string;
+  position: number;
+  addedAt: number;
+}
+
+export interface RemoteList {
+  origin: string;
+  service: string;
+  kind: string;
+  title: string;
+  owner: string;
+  cover: string | null;
+  tracks: Track[];
+  skipped: Skipped[];
+  truncated: boolean;
+}
+
+export interface ImportDone {
+  jobId: string;
+  ok: boolean;
+  cancelled: boolean;
+  error: AppError | null;
+  playlistId: string | null;
+  title: string;
+  total: number;
+  added: number;
+  removed: number;
+  updated: boolean;
+  unmatched: Track[];
+  skipped: Skipped[];
+  truncated: boolean;
+}
+
+export interface ImportProgress {
+  jobId: string;
+  phase: "reading" | "matching";
+  done: number;
+  total: number;
+}
+
+export interface Hidden {
+  kind: "track" | "artist";
+  value: string;
+  label: string;
+}
+
+export interface Followed {
+  source: SearchSource;
+  artistId: string;
+  name: string;
+  avatar: string | null;
+}
+
+export interface Releases {
+  artist: Followed;
+  releases: Collection[];
+  failed: boolean;
+}
+
+export interface AlbumPage {
+  source: SearchSource;
+  id: string;
+  title: string;
+  artists: ArtistRef[];
+  cover: string | null;
+  year: number | null;
+  kind: "album" | "ep" | "single";
+  tracks: Track[];
+  link: string | null;
+}
+
+export interface ArtistPage {
+  source: SearchSource;
+  id: string;
+  name: string;
+  avatar: string | null;
+  banner: string | null;
+  about: string | null;
+  topTracks: Track[];
+  albums: Collection[];
+  singles: Collection[];
+  similar: ArtistCard[];
+  link: string | null;
+}
+
+export interface TrashEntry {
+  kind: "playlist" | "folder" | "local";
+  id: string;
+  name: string;
+  detail: string;
+  deletedAt: number;
 }
 
 /** Error shape returned by every failing command. */
@@ -69,6 +216,22 @@ export interface AppError {
 
 export function isAppError(e: unknown): e is AppError {
   return typeof e === "object" && e !== null && "code" in e;
+}
+
+/** Strips the derived "via" field (and Svelte proxies) before a track goes to the backend. */
+function plain(t: Track): Track {
+  return {
+    id: t.id,
+    source: t.source,
+    sourceId: t.sourceId,
+    title: t.title,
+    artists: t.artists.map((a) => ({ id: a.id, name: a.name })),
+    album: t.album ? { id: t.album.id, name: t.album.name } : null,
+    durationMs: t.durationMs,
+    cover: t.cover,
+    isVideo: t.isVideo,
+    link: t.link,
+  };
 }
 
 export const api = {
@@ -83,15 +246,15 @@ export const api = {
   settingsLoad: () => invoke<{ account: Record<string, unknown>; device: Record<string, unknown> }>("settings_load"),
   settingSet: (scope: "account" | "device", key: string, value: unknown) => invoke<void>("setting_set", { scope, key, value }),
 
-  search: (source: SourceId, query: string, kind: SearchKind) => invoke<SearchResults>("search", { source, query, kind }),
+  search: (source: SearchSource, query: string, kind: SearchKind) => invoke<SearchResults>("search", { source, query, kind }),
   searchHistory: () => invoke<string[]>("search_history"),
   searchHistoryAdd: (query: string) => invoke<void>("search_history_add", { query }),
   searchHistoryClear: () => invoke<void>("search_history_clear"),
-  collectionTracks: (source: SourceId, kind: string, id: string) => invoke<Track[]>("collection_tracks", { source, kind, id }),
-  autoplayTracks: (track: Track) => invoke<Track[]>("autoplay_tracks", { track }),
+  collectionTracks: (source: SearchSource, kind: string, id: string) => invoke<Track[]>("collection_tracks", { source, kind, id }),
+  autoplayTracks: (track: Track) => invoke<Track[]>("autoplay_tracks", { track: plain(track) }),
 
-  prepareTrack: (track: Track, quality: Quality, retry = false) => invoke<Prepared>("prepare_track", { track, quality, retry }),
-  prefetchTrack: (track: Track, quality: Quality) => invoke<void>("prefetch_track", { track, quality }),
+  prepareTrack: (track: Track, quality: Quality, retry = false) => invoke<Prepared>("prepare_track", { track: plain(track), quality, retry }),
+  prefetchTrack: (track: Track, quality: Quality) => invoke<void>("prefetch_track", { track: plain(track), quality }),
 
   queueSave: (queue: unknown) => invoke<void>("queue_save", { queue }),
   queueLoad: () => invoke<unknown>("queue_load"),
@@ -103,6 +266,67 @@ export const api = {
 
   openExternal: (url: string) => invoke<void>("open_external", { url }),
   exitApp: () => invoke<void>("exit_app"),
+
+  libraryOverview: () => invoke<Overview>("library_overview"),
+  playlistGet: (id: string) => invoke<PlaylistDetail>("playlist_get", { id }),
+  playlistCreate: (name: string, folderId: string | null = null, tracks: Track[] = []) =>
+    invoke<string>("playlist_create", { name, folderId, tracks: tracks.map(plain) }),
+  playlistRename: (id: string, name: string) => invoke<void>("playlist_rename", { id, name }),
+  playlistSetFolder: (id: string, folderId: string | null) => invoke<void>("playlist_set_folder", { id, folderId }),
+  playlistDelete: (id: string) => invoke<void>("playlist_delete", { id }),
+  playlistAdd: (id: string, tracks: Track[]) => invoke<number>("playlist_add", { id, tracks: tracks.map(plain) }),
+  playlistRemove: (id: string, itemIds: string[]) => invoke<Removed[]>("playlist_remove", { id, itemIds }),
+  playlistRestoreItems: (id: string, rows: Removed[]) => invoke<void>("playlist_restore_items", { id, rows }),
+  playlistMove: (id: string, itemId: string, to: number) => invoke<void>("playlist_move", { id, itemId, to }),
+  playlistPlayed: (id: string) => invoke<void>("playlist_played", { id }),
+  playlistMerge: (a: string, b: string, into: string | null, newName: string | null) =>
+    invoke<string>("playlist_merge", { a, b, into, newName }),
+  folderCreate: (name: string, parentId: string | null = null) => invoke<string>("folder_create", { name, parentId }),
+  folderRename: (id: string, name: string) => invoke<void>("folder_rename", { id, name }),
+  folderSetParent: (id: string, parentId: string | null) => invoke<void>("folder_set_parent", { id, parentId }),
+  folderDelete: (id: string) => invoke<void>("folder_delete", { id }),
+
+  likeSet: (track: Track, liked: boolean) => invoke<void>("like_set", { track: plain(track), liked }),
+  likedList: () => invoke<Item[]>("liked_list"),
+  likedIds: () => invoke<string[]>("liked_ids"),
+  hiddenSet: (kind: "track" | "artist", value: string, label: string, on: boolean) => invoke<void>("hidden_set", { kind, value, label, on }),
+  hiddenList: () => invoke<Hidden[]>("hidden_list"),
+  followSet: (artist: Followed, on: boolean) => invoke<void>("follow_set", { artist, on }),
+  followsList: () => invoke<Followed[]>("follows_list"),
+  followedReleases: () => invoke<Releases[]>("followed_releases"),
+
+  artistPage: (source: SearchSource, id: string) => invoke<ArtistPage>("artist_page", { source, id }),
+  artistFind: (name: string) => invoke<ArtistCard | null>("artist_find", { name }),
+  albumPage: (source: SearchSource, id: string) => invoke<AlbumPage>("album_page", { source, id }),
+  soundcloudTrack: (id: string) => invoke<Track>("soundcloud_track", { id }),
+
+  trashList: () => invoke<TrashEntry[]>("trash_list"),
+  trashRestore: (kind: string, id: string) => invoke<void>("trash_restore", { kind, id }),
+  trashDelete: (kind: string, id: string) => invoke<void>("trash_delete", { kind, id }),
+  trashEmpty: () => invoke<void>("trash_empty"),
+  trashPurgeExpired: () => invoke<void>("trash_purge_expired"),
+
+  importPreview: (url: string) => invoke<RemoteList>("import_preview", { url }),
+  importStart: (url: string) => invoke<string>("import_start", { url }),
+  importCancel: (jobId: string) => invoke<void>("import_cancel", { jobId }),
+  importLikedLinks: (text: string) => invoke<string>("import_liked_links", { text }),
+  importLikedFile: () => invoke<string | null>("import_liked_file"),
+  importM3uPick: () => invoke<string | null>("import_m3u_pick"),
+  exportM3u: (id: string) => invoke<boolean>("export_m3u", { id }),
+
+  matchCandidates: (track: Track, query: string | null) => invoke<Track[]>("match_candidates", { track: plain(track), query }),
+  matchGet: (track: Track) => invoke<Track | null>("match_get", { track: plain(track) }),
+  matchSet: (track: Track, matched: Track) => invoke<void>("match_set", { track: plain(track), matched: plain(matched) }),
+  prematch: (tracks: Track[]) => invoke<void>("prematch", { tracks: tracks.map(plain) }),
+
+  localList: () => invoke<Track[]>("local_list"),
+  localAddDialog: () => invoke<boolean>("local_add_dialog"),
+  localEdit: (sourceId: string, title: string, artist: string, pickCover: boolean) =>
+    invoke<boolean>("local_edit", { sourceId, title, artist, pickCover }),
+  localRemove: (sourceId: string) => invoke<void>("local_remove", { sourceId }),
+  localFolder: () => invoke<string>("local_folder"),
+  localFolderPick: () => invoke<string | null>("local_folder_pick"),
+  localOpenFolder: () => invoke<void>("local_open_folder"),
 };
 
 export function artistLine(t: Pick<Track, "artists">): string {
@@ -111,6 +335,8 @@ export function artistLine(t: Pick<Track, "artists">): string {
 
 /** Through the app's cover proxy, which adds the CORS headers needed to read pixels. */
 export function proxiedCover(url: string): string {
+  // Local music covers are served by the app itself, already with CORS headers.
+  if (url.startsWith("http://relay.localhost/")) return url;
   return `http://relay.localhost/img/${encodeURIComponent(url)}`;
 }
 
@@ -129,4 +355,13 @@ export function formatTime(ms: number | null | undefined): string {
   const m = Math.floor((total % 3600) / 60);
   const s = String(total % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
+/** Total length of a list: "3 hr 12 min" / "42 min". */
+export function formatLength(ms: number, hourUnit: string): string {
+  const min = Math.round(ms / 60000);
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (h > 0) return m > 0 ? `${h} ${hourUnit} ${m} min` : `${h} ${hourUnit}`;
+  return `${m} min`;
 }

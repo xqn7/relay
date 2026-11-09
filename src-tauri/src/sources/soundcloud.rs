@@ -120,6 +120,7 @@ pub fn map_track(t: &Value) -> Option<Track> {
         cover: artwork(t),
         is_video: false,
         link: str_of(t, "permalink_url").map(str::to_string),
+        via: None,
     };
     track.is_sane().then_some(track)
 }
@@ -184,7 +185,12 @@ fn map_playlist(p: &Value) -> Option<Collection> {
         title,
         subtitle: format!("{owner} · {count}"),
         cover: artwork(p),
+        year: year_of(p),
     })
+}
+
+fn year_of(v: &Value) -> Option<u16> {
+    str_of(v, "release_date").or_else(|| str_of(v, "created_at")).and_then(|d| d.get(..4)).and_then(|y| y.parse().ok())
 }
 
 fn collection(v: &Value) -> &[Value] {
@@ -236,18 +242,149 @@ impl Source for SoundCloud {
             return Err(AppError::new("invalid_input", "bad SoundCloud playlist id"));
         }
         let p = self.api(&format!("/playlists/{id}")).await?;
+        let (tracks, _) = self.set_tracks(&p).await?;
+        Ok(tracks.iter().filter(|t| !is_preview_only(t)).filter_map(map_track).collect())
+    }
+}
+
+impl SoundCloud {
+    /// Full data for every song of a set, in order, plus how many songs SoundCloud no longer
+    /// returns (deleted or made private since they were added).
+    async fn set_tracks(&self, p: &Value) -> AppResult<(Vec<Value>, usize)> {
         let items = p.get("tracks").and_then(Value::as_array).cloned().unwrap_or_default();
+        let order: Vec<u64> = items.iter().filter_map(|t| t.get("id").and_then(Value::as_u64)).collect();
         // Sets only embed full data for the first few tracks; the rest are bare ids.
-        let (full, bare): (Vec<_>, Vec<_>) = items.into_iter().partition(|t| t.get("title").is_some());
-        let mut tracks: Vec<Value> = full;
-        let ids: Vec<String> = bare.iter().filter_map(|t| t.get("id").and_then(Value::as_u64)).map(|i| i.to_string()).collect();
-        for chunk in ids.chunks(50) {
+        let mut by_id: std::collections::HashMap<u64, Value> =
+            items.into_iter().filter(|t| t.get("title").is_some()).filter_map(|t| Some((t.get("id")?.as_u64()?, t))).collect();
+        let missing: Vec<String> = order.iter().filter(|id| !by_id.contains_key(id)).map(|i| i.to_string()).collect();
+        for chunk in missing.chunks(50) {
             let v = self.api(&format!("/tracks?ids={}", chunk.join("%2C"))).await?;
-            if let Some(arr) = v.as_array() {
-                tracks.extend(arr.iter().cloned());
+            for t in v.as_array().into_iter().flatten() {
+                if let Some(id) = t.get("id").and_then(Value::as_u64) {
+                    by_id.insert(id, t.clone());
+                }
             }
         }
-        Ok(tracks.iter().filter(|t| !is_preview_only(t)).filter_map(map_track).collect())
+        let tracks: Vec<Value> = order.iter().filter_map(|id| by_id.remove(id)).collect();
+        let gone = order.len() - tracks.len();
+        Ok((tracks, gone))
+    }
+
+    async fn resolve_url(&self, url: &str) -> AppResult<Value> {
+        if !url.starts_with("https://soundcloud.com/") {
+            return Err(AppError::new("invalid_input", "not a SoundCloud link"));
+        }
+        self.api(&format!("/resolve?url={}", encode_query(url))).await
+    }
+
+    /// Reads a set (playlist/album) or a single song for import. Go+ songs are kept: they
+    /// play through a YouTube stand-in.
+    pub async fn import(&self, url: &str) -> AppResult<RemoteList> {
+        let v = self.resolve_url(url).await?;
+        let id = v.get("id").and_then(Value::as_u64).ok_or_else(|| AppError::new("bad_response", "SoundCloud gave no id"))?.to_string();
+        let mut list = RemoteList {
+            origin: String::new(),
+            service: SOUNDCLOUD.into(),
+            kind: String::new(),
+            title: str_of(&v, "title").unwrap_or("SoundCloud").into(),
+            owner: v.get("user").and_then(|u| str_of(u, "username")).unwrap_or("").to_string(),
+            cover: artwork(&v),
+            tracks: Vec::new(),
+            skipped: Vec::new(),
+            truncated: false,
+        };
+        match str_of(&v, "kind").unwrap_or("") {
+            "playlist" | "system-playlist" => {
+                let (tracks, gone) = self.set_tracks(&v).await?;
+                list.kind = if v.get("is_album").and_then(Value::as_bool) == Some(true) { "album".into() } else { "playlist".into() };
+                list.tracks = tracks.iter().filter_map(map_track).collect();
+                list.skipped = (0..gone).map(|_| Skipped { title: String::new(), artist: String::new(), reason: "deleted".into() }).collect();
+            }
+            "track" => {
+                list.kind = "track".into();
+                list.tracks = map_track(&v).into_iter().collect();
+            }
+            _ => return Err(AppError::new("not_found", "That SoundCloud link is not a song or a set")),
+        }
+        list.origin = format!("{SOUNDCLOUD}:{}:{id}", list.kind);
+        Ok(list)
+    }
+
+    pub async fn album_page(&self, id: &str) -> AppResult<AlbumPage> {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::new("invalid_input", "bad SoundCloud set id"));
+        }
+        let p = self.api(&format!("/playlists/{id}")).await?;
+        let (tracks, _) = self.set_tracks(&p).await?;
+        let user = p.get("user");
+        Ok(AlbumPage {
+            source: SOUNDCLOUD.into(),
+            id: id.into(),
+            title: str_of(&p, "title").unwrap_or("SoundCloud").into(),
+            artists: vec![ArtistRef {
+                id: user.and_then(|u| u.get("id")).and_then(Value::as_u64).map(|i| i.to_string()),
+                name: user.and_then(|u| str_of(u, "username")).unwrap_or("").into(),
+            }],
+            cover: artwork(&p),
+            year: year_of(&p),
+            kind: str_of(&p, "set_type").filter(|t| matches!(*t, "ep" | "single")).unwrap_or("album").into(),
+            tracks: tracks.iter().filter_map(map_track).collect(),
+            link: str_of(&p, "permalink_url").map(str::to_string),
+        })
+    }
+
+    pub async fn artist_page(&self, id: &str) -> AppResult<ArtistPage> {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit()) {
+            return Err(AppError::new("invalid_input", "bad SoundCloud user id"));
+        }
+        let paths = [
+            format!("/users/{id}"),
+            format!("/users/{id}/toptracks?limit=10"),
+            format!("/users/{id}/albums?limit=20"),
+            format!("/users/{id}/tracks?limit=20"),
+        ];
+        let (user, top, albums, latest) = tokio::join!(self.api(&paths[0]), self.api(&paths[1]), self.api(&paths[2]), self.api(&paths[3]));
+        let user = user?;
+        let latest = latest.unwrap_or_default();
+        let mut top_tracks: Vec<Track> = top.map(|v| collection(&v).iter().filter_map(map_track).collect()).unwrap_or_default();
+        if top_tracks.is_empty() {
+            top_tracks = collection(&latest).iter().filter_map(map_track).take(10).collect();
+        }
+        // SoundCloud artists mostly release single tracks; the newest ones are their "singles".
+        let singles = collection(&latest)
+            .iter()
+            .filter_map(|t| {
+                let track = map_track(t)?;
+                Some(Collection {
+                    source: SOUNDCLOUD.into(),
+                    kind: "track".into(),
+                    id: track.source_id.clone(),
+                    subtitle: track.artist_line(),
+                    cover: track.cover.clone(),
+                    year: year_of(t),
+                    title: track.title,
+                })
+            })
+            .collect();
+        Ok(ArtistPage {
+            source: SOUNDCLOUD.into(),
+            id: id.into(),
+            name: str_of(&user, "username").unwrap_or("SoundCloud").into(),
+            avatar: str_of(&user, "avatar_url").filter(|u| u.starts_with("https://")).map(|u| u.replace("-large.", "-t500x500.")),
+            banner: user.pointer("/visuals/visuals/0/visual_url").and_then(Value::as_str).filter(|u| u.starts_with("https://")).map(str::to_string),
+            about: str_of(&user, "description").map(str::to_string),
+            top_tracks,
+            albums: albums.map(|v| collection(&v).iter().filter_map(map_playlist).collect()).unwrap_or_default(),
+            singles,
+            similar: Vec::new(),
+            link: str_of(&user, "permalink_url").map(str::to_string),
+        })
+    }
+
+    /// One SoundCloud song by id (artist pages list them as "singles").
+    pub async fn track(&self, id: &str) -> AppResult<Track> {
+        let t = self.fetch_track(id).await?;
+        map_track(&t).ok_or_else(|| AppError::new("bad_response", "SoundCloud track data is incomplete"))
     }
 }
 
