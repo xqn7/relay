@@ -1,5 +1,8 @@
 <script lang="ts">
+  import DevicePicker from "../../lib/components/DevicePicker.svelte";
+  import EqEditor from "../../lib/components/EqEditor.svelte";
   import Segmented from "../../lib/components/Segmented.svelte";
+  import SpeedPitch from "../../lib/components/SpeedPitch.svelte";
   import Toggle from "../../lib/components/Toggle.svelte";
   import type { Key } from "../../lib/i18n/en";
   import { t } from "../../lib/i18n/index.svelte";
@@ -94,6 +97,40 @@
   </div>
 {/if}
 
+{#if visible("sound.output", "sound.outputDesc") || visible("eq.title", "eq.desc") || visible("sound.speedPitch", "sound.speedPitchDesc") || visible("settings.sponsorBlock", "settings.sponsorBlockDesc")}
+  <h3>{t("settings.section.tools")}</h3>
+  <div class="card">
+    {#if visible("sound.output", "sound.outputDesc")}
+      <SettingRow label={t("sound.output")} desc={t("sound.outputDesc")}>
+        <div class="device"><DevicePicker /></div>
+      </SettingRow>
+    {/if}
+    {#if visible("eq.title", "eq.desc")}
+      <div class="block">
+        <EqEditor />
+        <p class="note">{t("eq.desc")}</p>
+      </div>
+    {/if}
+    {#if visible("sound.speedPitch", "sound.speedPitchDesc")}
+      <div class="block">
+        <SpeedPitch />
+        <p class="note">{t("sound.speedPitchDesc")}</p>
+      </div>
+    {/if}
+    {#if visible("settings.sponsorBlock", "settings.sponsorBlockDesc")}
+      <SettingRow label={t("settings.sponsorBlock")} desc={t("settings.sponsorBlockDesc")}>
+        <Toggle
+          label={t("settings.sponsorBlock")}
+          checked={v.sponsorBlock}
+          onchange={(x) => {
+            settings.set("sponsorBlock", x);
+            player.applySkipSetting();
+          }} />
+      </SettingRow>
+    {/if}
+  </div>
+{/if}
+
 {#if visible("settings.hidden", "settings.hiddenDesc")}
   <h3>{t("settings.hidden")}</h3>
   <p class="desc">{t("settings.hiddenDesc")}</p>
@@ -117,5 +154,21 @@
   .card {
     border-radius: var(--r-lg);
     background: rgba(255, 255, 255, 0.05);
+  }
+  .block {
+    padding: 14px 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .block + :global(.row) {
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .note {
+    margin: 10px 0 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+  .device {
+    max-width: 300px;
+    display: flex;
   }
 </style>

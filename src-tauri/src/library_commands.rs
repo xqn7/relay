@@ -17,14 +17,14 @@ const MAX_BATCH: usize = 10_000;
 const ARTIST_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
 const FOLLOW_PARALLEL: usize = 3;
 
-fn check_tracks(tracks: &[Track]) -> AppResult<()> {
+pub(crate) fn check_tracks(tracks: &[Track]) -> AppResult<()> {
     if tracks.len() > MAX_BATCH || tracks.iter().any(|t| !t.is_sane()) {
         return Err(AppError::new("invalid_input", "bad tracks"));
     }
     Ok(())
 }
 
-fn check_id(id: &str) -> AppResult<()> {
+pub(crate) fn check_id(id: &str) -> AppResult<()> {
     if id.is_empty() || id.len() > 128 || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/')) {
         return Err(AppError::new("invalid_input", "bad id"));
     }
@@ -92,6 +92,12 @@ pub fn playlist_restore_items(state: St, id: String, rows: Vec<Removed>) -> AppR
 #[tauri::command]
 pub fn playlist_move(state: St, id: String, item_id: String, to: usize) -> AppResult<()> {
     library::move_item(&state.db, &current(&state)?.id, &id, &item_id, to)
+}
+
+#[tauri::command]
+pub fn playlist_replace(state: St, id: String, item_id: String, track: Track) -> AppResult<()> {
+    check_tracks(std::slice::from_ref(&track))?;
+    library::replace_item(&state.db, &current(&state)?.id, &id, &item_id, &track)
 }
 
 #[tauri::command]

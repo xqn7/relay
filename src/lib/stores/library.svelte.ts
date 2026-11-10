@@ -2,7 +2,7 @@
 // hidden songs/artists and followed artists. Refreshed by the backend's "library-changed"
 // event, so every view stays in sync without polling.
 import { listen } from "@tauri-apps/api/event";
-import { api, artistLine, isAppError, type Followed, type Hidden, type Overview, type Track } from "../api";
+import { api, artistLine, isAppError, type Followed, type Hidden, type Overview, type Track, type Trim } from "../api";
 import { t } from "../i18n/index.svelte";
 import { fold } from "../text";
 import { offline } from "./offline.svelte";
@@ -15,6 +15,8 @@ class LibraryStore {
   liked = $state<Set<string>>(new Set());
   hidden = $state<Hidden[]>([]);
   follows = $state<Followed[]>([]);
+  /** Songs with a custom start/end, by track id. */
+  trims = $state<Record<string, Trim>>({});
   /** Bumped whenever the library changed, so open pages know to reload. */
   version = $state(0);
   private attached = false;
@@ -26,7 +28,14 @@ class LibraryStore {
   }
 
   async refresh(): Promise<void> {
-    const [overview, liked, hidden, follows] = await Promise.all([api.libraryOverview(), api.likedIds(), api.hiddenList(), api.followsList()]);
+    const [overview, liked, hidden, follows, trims] = await Promise.all([
+      api.libraryOverview(),
+      api.likedIds(),
+      api.hiddenList(),
+      api.followsList(),
+      api.trimsList(),
+    ]);
+    this.trims = trims;
     this.overview = overview;
     this.liked = new Set(liked);
     this.hidden = hidden;
@@ -41,6 +50,22 @@ class LibraryStore {
     this.liked = new Set();
     this.hidden = [];
     this.follows = [];
+    this.trims = {};
+  }
+
+  /** Saves or (with null) removes a trim. False when saving failed (already shown). */
+  async setTrim(track: Track, trim: Trim | null): Promise<boolean> {
+    try {
+      await api.trimSet(track, trim);
+      const next = { ...this.trims };
+      if (trim) next[track.id] = trim;
+      else delete next[track.id];
+      this.trims = next;
+      return true;
+    } catch (e) {
+      fail(e);
+      return false;
+    }
   }
 
   isLiked(track: Track): boolean {

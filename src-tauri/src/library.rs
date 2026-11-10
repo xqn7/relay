@@ -387,6 +387,23 @@ pub fn move_item(db: &Db, account: &str, playlist: &str, item_id: &str, to: usiz
     })
 }
 
+/// Swaps the song of one playlist entry for another (e.g. a different version), keeping its
+/// place and "added" date.
+pub fn replace_item(db: &Db, account: &str, playlist: &str, item_id: &str, track: &Track) -> AppResult<()> {
+    tx(db, |c| {
+        require_playlist(c, account, playlist)?;
+        crate::db::upsert_track_conn(c, track)?;
+        let n = c.execute(
+            "UPDATE playlist_items SET track_id=?3, updated_at=?4 WHERE id=?1 AND playlist_id=?2",
+            params![item_id, playlist, track.id, now_secs()],
+        )?;
+        if n == 0 {
+            return Err(AppError::new("not_found", "song not in playlist"));
+        }
+        Ok(())
+    })
+}
+
 /// Makes the playlist match an imported list: keeps songs still in it (with their "added"
 /// date), drops songs that are gone, adds new ones, and takes the list's order.
 pub fn sync_items(db: &Db, account: &str, playlist: &str, tracks: &[Track]) -> AppResult<(usize, usize)> {

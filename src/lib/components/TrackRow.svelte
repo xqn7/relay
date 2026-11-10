@@ -2,6 +2,7 @@
   import { formatTime, type Track } from "../api";
   import { t } from "../i18n/index.svelte";
   import { openArtist, playsFrom } from "../navigate";
+  import { library } from "../stores/library.svelte";
   import { offline } from "../stores/offline.svelte";
   import { player } from "../stores/player.svelte";
   import Cover from "./Cover.svelte";
@@ -73,6 +74,7 @@
     <div class="artist">
       <SourceBadge source={playsFrom(track)} />
       {#if downloaded}<span class="saved" title={t("offline.downloaded")}><Icon name="download" size={12} /></span>{/if}
+      {#if library.trims[track.id]}<span class="saved" title={t("trim.badge")}><Icon name="scissors" size={11} /></span>{/if}
       <span class="truncate">
         {#each track.artists as a, i (i)}{#if i > 0}{", "}{/if}<button class="link" tabindex="-1" onclick={(e) => artistClick(e, i)}>{a.name}</button>{/each}
         {#if unmatched}<span class="note"> · {t("track.noMatch")}</span>{/if}

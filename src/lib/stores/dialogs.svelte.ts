@@ -10,7 +10,8 @@ export type Dialog =
   | { kind: "fixMatch"; track: Track }
   | { kind: "editLocal"; track: Track }
   | { kind: "merge"; playlistId: string }
-  | { kind: "connection" };
+  | { kind: "connection" }
+  | { kind: "versions"; track: Track; playlist?: { id: string; itemId: string; onReplaced: () => void } };
 
 class DialogStore {
   current = $state<Dialog | null>(null);

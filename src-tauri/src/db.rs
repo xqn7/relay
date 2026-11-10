@@ -206,6 +206,20 @@ CREATE TABLE translations(
     created_at INTEGER NOT NULL,
     PRIMARY KEY(track_id, lang)
 );
+"#, r#"
+CREATE TABLE trims(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    track_id TEXT NOT NULL,
+    start_ms INTEGER NOT NULL,
+    end_ms INTEGER,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, track_id)
+);
+CREATE TABLE waveforms(
+    track_id TEXT PRIMARY KEY,
+    peaks BLOB NOT NULL,
+    created_at INTEGER NOT NULL
+);
 "#];
 
 impl Db {

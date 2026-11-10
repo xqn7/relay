@@ -7,7 +7,12 @@
   import Icon from "../../lib/components/Icon.svelte";
   import IconButton from "../../lib/components/IconButton.svelte";
   import LikeButton from "../../lib/components/LikeButton.svelte";
-  import Slider from "../../lib/components/Slider.svelte";
+  import type { Rgb } from "../../lib/backdrop/colors";
+  import SeekBar from "../../lib/components/SeekBar.svelte";
+  import { dialogs } from "../../lib/stores/dialogs.svelte";
+  import { settings } from "../../lib/stores/settings.svelte";
+  import RangePanel from "../RangePanel.svelte";
+  import Visualizer from "./Visualizer.svelte";
   import Spinner from "../../lib/components/Spinner.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { openArtist } from "../../lib/navigate";
@@ -25,9 +30,8 @@
     const url = tr && hd?.id === tr.id ? hd.url : coverAt(tr?.cover ?? player.via?.cover ?? null, 1200);
     return url ? proxiedCover(url) : null;
   }
-  let seekPreview = $state<number | null>(null);
-  const progress = $derived(seekPreview ?? (player.durationMs > 0 ? player.positionMs / player.durationMs : 0));
   let editing = $state(false);
+  let colors = $state<Rgb[]>([]);
 
   $effect(() => {
     const tr = track;
@@ -52,7 +56,8 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="full" role="dialog" aria-modal="true" aria-label={t("full.title")} transition:fly={{ y: 24, duration: 220 }}>
-  <Backdrop cover={cover} full />
+  <Backdrop cover={cover} full bind:colors />
+  {#if settings.values.visualizer && track}<Visualizer {colors} style={settings.values.visualizerStyle} />{/if}
   <div class="top" data-tauri-drag-region>
     <IconButton icon="chevronDown" label={t("full.close")} size={20} onclick={close} />
     <WindowControls />
@@ -61,6 +66,7 @@
   <div class="body">
     <section class="now">
       <div class="art">
+        {#if player.markers}<RangePanel docked />{/if}
         {#each [track] as tr (tr?.id)}
           {@const url = artUrl(tr)}
           <div class="art-cell" in:scale={{ start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: 360 }}>
@@ -89,22 +95,28 @@
               </p>
             </div>
           {/each}
+          <div class="tools">
+            <IconButton
+              icon="range"
+              label={player.markers ? t("range.close") : t("range.open")}
+              active={!!player.markers}
+              disabled={!track || player.durationMs <= 0}
+              onclick={() => (player.markers ? player.hideMarkers() : player.showMarkers())} />
+            <IconButton icon="layers" label={t("versions.title")} disabled={!track} onclick={() => track && dialogs.open({ kind: "versions", track })} />
+            <IconButton
+              icon="audioLines"
+              label={settings.values.visualizer ? t("viz.hide") : t("viz.show")}
+              active={settings.values.visualizer}
+              onclick={() => settings.set("visualizer", !settings.values.visualizer)} />
+          </div>
           <LikeButton {track} size={22} />
         </div>
       {/if}
 
       <div class="seek">
-        <Slider
-          label={t("player.seek")}
-          value={progress}
-          valueText={formatTime(player.positionMs)}
-          oninput={(v) => (seekPreview = v)}
-          onchange={(v) => {
-            seekPreview = null;
-            player.seek(v * player.durationMs);
-          }} />
+        <SeekBar tall />
         <div class="times">
-          <span>{formatTime(seekPreview != null ? seekPreview * player.durationMs : player.positionMs)}</span>
+          <span>{formatTime(player.positionMs)}</span>
           <span>{formatTime(player.durationMs || null)}</span>
         </div>
       </div>
@@ -122,6 +134,7 @@
           active={player.queue.repeat !== "off"}
           onclick={() => player.cycleRepeat()} />
       </div>
+
     </section>
 
     <section class="side">
@@ -174,6 +187,7 @@
     width: 100%;
   }
   .art {
+    position: relative;
     display: grid;
     width: 100%;
     aspect-ratio: 1;
@@ -236,6 +250,10 @@
     font-size: var(--fs-xs);
     color: var(--text-3);
     font-variant-numeric: tabular-nums;
+  }
+  .tools {
+    display: flex;
+    gap: 2px;
   }
   .transport {
     display: flex;

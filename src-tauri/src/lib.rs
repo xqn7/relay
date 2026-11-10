@@ -5,6 +5,7 @@ mod commands;
 mod covers;
 mod db;
 mod error;
+mod export;
 mod http;
 mod importer;
 mod library;
@@ -19,6 +20,8 @@ mod media;
 mod network;
 mod resolver;
 mod secrets;
+mod sound;
+mod sound_commands;
 mod sources;
 mod storage;
 mod storage_commands;
@@ -26,6 +29,7 @@ mod streams;
 mod tools;
 mod translate;
 mod util;
+mod versions;
 
 use accounts::Account;
 use db::Db;
@@ -56,6 +60,10 @@ pub struct AppState {
     pub net: network::Network,
     pub lyrics_locks: lyrics::Locks,
     pub artist_cache: Mutex<HashMap<String, (Instant, sources::ArtistPage)>>,
+    pub waveform_lock: tokio::sync::Mutex<()>,
+    pub sponsor: sound::Sponsor,
+    /// The last MP3 export, for "Show in folder".
+    pub last_export: Mutex<Option<std::path::PathBuf>>,
 }
 
 /// Only the app's own pages may load in the window; everything else opens in the browser.
@@ -109,6 +117,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         net: network::Network::new(),
         lyrics_locks: lyrics::Locks::default(),
         artist_cache: Mutex::new(HashMap::new()),
+        waveform_lock: tokio::sync::Mutex::new(()),
+        sponsor: sound::Sponsor::default(),
+        last_export: Mutex::new(None),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
         sc: SoundCloud::new(http.clone(), db.clone()),
@@ -123,6 +134,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(state);
     app.manage(state.clone());
     audio_devices::watch(handle.clone());
+    audio_devices::allow_output_names(&window);
     network::watch(&handle);
     tauri::async_runtime::spawn(local::start(state.clone()));
     {
@@ -301,6 +313,14 @@ pub fn run() {
             lyrics_commands::lyrics_reset,
             lyrics_commands::deepl_key_saved,
             lyrics_commands::deepl_key_set,
+            library_commands::playlist_replace,
+            sound_commands::trims_list,
+            sound_commands::trim_set,
+            sound_commands::waveform,
+            sound_commands::sponsor_segments,
+            sound_commands::other_versions,
+            sound_commands::export_mp3,
+            sound_commands::export_reveal,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

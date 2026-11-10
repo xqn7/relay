@@ -256,6 +256,25 @@ export interface Translation {
 
 export type TranslateLang = "en" | "de";
 
+export interface Trim {
+  startMs: number;
+  endMs: number | null;
+}
+
+export type VersionKind = "slowed" | "slowedReverb" | "spedUp" | "nightcore" | "remix" | "live" | "acoustic" | "instrumental";
+
+export interface Version {
+  kind: VersionKind;
+  track: Track;
+}
+
+export interface ExportDone {
+  saved: number;
+  failed: string[];
+  folder: string;
+  file: string | null;
+}
+
 /** Error shape returned by every failing command. */
 export interface AppError {
   code: string;
@@ -406,6 +425,16 @@ export const api = {
   lyricsReset: (track: Track) => invoke<Lyrics | null>("lyrics_reset", { track: plain(track) }),
   deeplKeySaved: () => invoke<boolean>("deepl_key_saved"),
   deeplKeySet: (key: string | null) => invoke<void>("deepl_key_set", { key }),
+
+  playlistReplace: (id: string, itemId: string, track: Track) => invoke<void>("playlist_replace", { id, itemId, track: plain(track) }),
+  trimsList: () => invoke<Record<string, Trim>>("trims_list"),
+  trimSet: (track: Track, trim: Trim | null) => invoke<void>("trim_set", { track: plain(track), trim }),
+  waveform: (track: Track) => invoke<number[]>("waveform", { track: plain(track) }),
+  sponsorSegments: (videoId: string) => invoke<[number, number][]>("sponsor_segments", { videoId }),
+  otherVersions: (track: Track) => invoke<Version[]>("other_versions", { track: plain(track) }),
+  exportMp3: (tracks: Track[], startMs: number | null = null, endMs: number | null = null) =>
+    invoke<ExportDone | null>("export_mp3", { tracks: tracks.map(plain), startMs, endMs }),
+  exportReveal: () => invoke<void>("export_reveal"),
 };
 
 /** "1.2 GB", "340 MB". */

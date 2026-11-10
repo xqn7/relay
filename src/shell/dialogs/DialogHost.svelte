@@ -8,6 +8,7 @@
   import MergeDialog from "./MergeDialog.svelte";
   import ReportDialog from "./ReportDialog.svelte";
   import SmallDialogs from "./SmallDialogs.svelte";
+  import VersionsDialog from "./VersionsDialog.svelte";
 
   const d = $derived(dialogs.current);
 </script>
@@ -30,6 +31,8 @@
       <MergeDialog playlistId={d.playlistId} />
     {:else if d.kind === "connection"}
       <ConnectionDialog />
+    {:else if d.kind === "versions"}
+      <VersionsDialog track={d.track} playlist={d.playlist} />
     {/if}
   {/key}
 {/if}

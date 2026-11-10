@@ -4,12 +4,12 @@
 
   // `full`: the colors fill the whole view (fullscreen player, idle screen) instead of
   // melting into near-black below the top.
-  let { cover, full = false }: { cover: string | null; full?: boolean } = $props();
+  // `colors` can be bound by views that draw in the cover's colors too (the visualizer).
+  let { cover, full = false, colors = $bindable(neutralColors()) }: { cover: string | null; full?: boolean; colors?: Rgb[] } = $props();
 
   // One set of blobs drifts forever; only their colors change. The colors are registered CSS
   // properties (see tokens.css), so the browser blends old → new smoothly with no flash and
   // without restarting the drift.
-  let colors = $state<Rgb[]>(neutralColors());
   let seq = 0;
 
   async function extract(url: string): Promise<Rgb[]> {

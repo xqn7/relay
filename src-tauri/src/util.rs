@@ -5,6 +5,18 @@ pub fn now_secs() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
 }
 
+/// A name usable as a Windows file name (without extension): reserved characters replaced,
+/// trailing dots and spaces removed, at most 120 characters.
+pub fn safe_file_stem(name: &str, fallback: &str) -> String {
+    let clean: String = name.chars().map(|c| if r#"\/:*?"<>|"#.contains(c) || c.is_control() { '_' } else { c }).collect();
+    let clean: String = clean.trim().trim_end_matches(['.', ' ']).chars().take(120).collect();
+    if clean.trim().is_empty() {
+        fallback.to_string()
+    } else {
+        clean.trim_end().to_string()
+    }
+}
+
 pub fn now_millis() -> i64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }

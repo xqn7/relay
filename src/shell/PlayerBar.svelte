@@ -6,17 +6,31 @@
   import IconButton from "../lib/components/IconButton.svelte";
   import LikeButton from "../lib/components/LikeButton.svelte";
   import { openArtist, playsFrom } from "../lib/navigate";
+  import SeekBar from "../lib/components/SeekBar.svelte";
   import Slider from "../lib/components/Slider.svelte";
   import SourceBadge from "../lib/components/SourceBadge.svelte";
   import Spinner from "../lib/components/Spinner.svelte";
   import { t } from "../lib/i18n/index.svelte";
   import { player } from "../lib/stores/player.svelte";
+  import { settings } from "../lib/stores/settings.svelte";
+  import { sound } from "../lib/stores/sound.svelte";
+  import { waveform } from "../lib/stores/waveform.svelte";
+  import RangePanel from "./RangePanel.svelte";
+  import SoundPanel from "./SoundPanel.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import { openTrackMenu } from "../lib/trackMenu";
 
   const track = $derived(player.current?.track ?? null);
-  let seekPreview = $state<number | null>(null);
-  const progress = $derived(seekPreview ?? (player.durationMs > 0 ? player.positionMs / player.durationMs : 0));
+  let soundOpen = $state(false);
+  const soundChanged = $derived(sound.eq.on || settings.values.speed !== 1 || settings.values.pitch !== 0);
+
+  // The waveform is looked up once the song has started (and finished downloading).
+  $effect(() => {
+    const tr = track;
+    const playingIt = player.durationMs > 0 && !player.loading;
+    if (settings.values.waveform && tr && playingIt) waveform.load(tr);
+    else if (!settings.values.waveform) waveform.clear();
+  });
   const repeatLabel = $derived(
     player.queue.repeat === "one" ? t("player.repeatOne") : player.queue.repeat === "all" ? t("player.repeatAll") : t("player.repeatOff"),
   );
@@ -31,18 +45,7 @@
 
 <footer class="bar glass">
   {#if track}
-    <div class="seek">
-      <Slider
-        thin
-        label={t("player.seek")}
-        value={progress}
-        valueText={formatTime(player.positionMs)}
-        oninput={(v) => (seekPreview = v)}
-        onchange={(v) => {
-          seekPreview = null;
-          player.seek(v * player.durationMs);
-        }} />
-    </div>
+    <div class="seek"><SeekBar /></div>
   {/if}
 
   <div class="now">
@@ -73,7 +76,7 @@
   </div>
 
   <div class="transport">
-    <span class="time">{track ? formatTime(seekPreview != null ? seekPreview * player.durationMs : player.positionMs) : ""}</span>
+    <span class="time">{track ? formatTime(player.positionMs) : ""}</span>
     <IconButton icon="prev" label={t("player.previous")} size={18} disabled={!track} onclick={() => player.previous()} />
     {#if player.loading || player.buffering}
       <button class="play" aria-label={t("player.loading")} onclick={() => player.toggle()}><Spinner size={18} /></button>
@@ -87,6 +90,12 @@
   </div>
 
   <div class="tools">
+    <IconButton
+      icon="range"
+      label={player.markers ? t("range.close") : t("range.open")}
+      active={!!player.markers}
+      disabled={!track || player.durationMs <= 0}
+      onclick={() => (player.markers ? player.hideMarkers() : player.showMarkers())} />
     <IconButton icon="shuffle" label={t("player.shuffle")} active={player.queue.shuffle} onclick={() => player.toggleShuffle()} />
     <IconButton
       icon={player.queue.repeat === "one" ? "repeatOne" : "repeat"}
@@ -101,10 +110,14 @@
       {/if}
       <IconButton icon={volumeIcon} label={player.muted ? t("player.unmute") : t("player.mute")} onclick={() => player.toggleMute()} />
     </div>
+    <span data-sound-toggle style="display: contents"><IconButton icon="sliders" label={t("sound.title")} active={soundOpen || soundChanged} onclick={() => (soundOpen = !soundOpen)} /></span>
     <IconButton icon="micVocal" label={t("full.lyrics")} active={ui.fullscreenOpen} disabled={!track} onclick={() => (ui.fullscreenOpen = !ui.fullscreenOpen)} />
     <IconButton icon="queue" label={t("player.queue")} active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} />
   </div>
 </footer>
+
+{#if player.markers && !ui.fullscreenOpen}<RangePanel />{/if}
+{#if soundOpen}<SoundPanel onClose={() => (soundOpen = false)} />{/if}
 
 <style>
   .bar {
@@ -126,7 +139,8 @@
     position: absolute;
     left: 14px;
     right: 14px;
-    top: -9px;
+    top: 0;
+    transform: translateY(-50%);
   }
   .now {
     display: flex;

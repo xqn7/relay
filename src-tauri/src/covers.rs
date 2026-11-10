@@ -275,23 +275,25 @@ pub async fn use_hd_for_local(state: &Arc<AppState>, track: &Track) -> AppResult
 
 /// A file name for a cover, from the song or list name it belongs to.
 pub fn file_name(name: &str, mime: &str) -> String {
-    let clean: String = name.chars().map(|c| if r#"\/:*?"<>|"#.contains(c) || c.is_control() { '_' } else { c }).collect();
-    let clean = clean.trim().trim_end_matches('.');
-    let clean: String = clean.chars().take(120).collect();
-    format!("{}.{}", if clean.is_empty() { "Cover" } else { &clean }, ext_for(mime))
+    format!("{}.{}", crate::util::safe_file_stem(name, "Cover"), ext_for(mime))
 }
 
 fn best_url(url: &str) -> String {
     hd_variant(url).unwrap_or_else(|| url.to_string())
 }
 
+/// A cover at the biggest size its server offers, else as given.
+pub async fn best(state: &AppState, url: &str) -> AppResult<(Arc<Vec<u8>>, String)> {
+    match load(state, &best_url(url)).await {
+        Ok(found) => Ok(found),
+        Err(_) => load(state, url).await,
+    }
+}
+
 /// "Save image": the cover at full resolution, to a file the user picks.
 pub async fn save(app: &tauri::AppHandle, state: &AppState, url: &str, name: &str) -> AppResult<bool> {
     use tauri_plugin_dialog::DialogExt;
-    let (bytes, mime) = match load(state, &best_url(url)).await {
-        Ok(found) => found,
-        Err(_) => load(state, url).await?,
-    };
+    let (bytes, mime) = best(state, url).await?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let ext = ext_for(&mime);
     app.dialog().file().set_file_name(file_name(name, &mime)).add_filter("Image", &[ext]).save_file(move |p| {
@@ -305,10 +307,7 @@ pub async fn save(app: &tauri::AppHandle, state: &AppState, url: &str, name: &st
 
 /// Gets the cover file ready before the drag starts, so dragging begins without delay.
 pub async fn prepare_drag(state: &AppState, url: &str, name: &str) -> AppResult<()> {
-    let (bytes, mime) = match load(state, &best_url(url)).await {
-        Ok(found) => found,
-        Err(_) => load(state, url).await?,
-    };
+    let (bytes, mime) = best(state, url).await?;
     let dir = std::env::temp_dir().join("Relay covers");
     tokio::fs::create_dir_all(&dir).await?;
     let path = dir.join(file_name(name, &mime));

@@ -99,7 +99,7 @@ fn mtime_of(meta: &std::fs::Metadata) -> i64 {
 }
 
 /// Picks a free name in `dir` ("song.mp3", then "song (2).mp3", …).
-fn free_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
+pub(crate) fn free_path(dir: &Path, stem: &str, ext: &str) -> PathBuf {
     let mut candidate = dir.join(format!("{stem}.{ext}"));
     let mut n = 2;
     while candidate.exists() {

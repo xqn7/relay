@@ -2,6 +2,7 @@
 // actions that make sense for many songs apply to all of them.
 import { api, IMPORT_ONLY, type Track } from "./api";
 import { saveTrackCover } from "./coverActions";
+import { exportSongs } from "./exportActions";
 import { t } from "./i18n/index.svelte";
 import { hasAlbumPage, openAlbum, openArtist } from "./navigate";
 import { dialogs } from "./stores/dialogs.svelte";
@@ -17,7 +18,7 @@ export interface MenuContext {
   index: number;
   /** Selected songs, when the right-clicked song is part of a multi-selection. */
   selection?: Track[];
-  /** Set inside a playlist: enables "Remove from this playlist". */
+  /** Set inside a playlist: enables "Remove from this playlist" and "Replace in playlist". */
   playlist?: { id: string; itemIds: string[]; onRemoved: () => void };
 }
 
@@ -92,6 +93,8 @@ export function trackMenuItems(ctx: MenuContext): MenuItem[] {
     });
   }
 
+  items.push({ label: t("menu.downloadMp3"), icon: "folder", action: () => exportSongs(targets) });
+
   if (many) {
     items.push({
       label: t("menu.likeAll"),
@@ -114,6 +117,16 @@ export function trackMenuItems(ctx: MenuContext): MenuItem[] {
   }
   if (hasAlbumPage(track)) items.push({ label: t("menu.goToAlbum"), icon: "disc", action: () => openAlbum(track) });
   items.push({ label: t("menu.startRadio"), icon: "radio", action: () => player.startRadio(track) });
+  items.push({
+    label: t("versions.title"),
+    icon: "layers",
+    action: () => {
+      const pl = ctx.playlist;
+      const itemId = pl?.itemIds[0];
+      dialogs.open({ kind: "versions", track, playlist: pl && itemId ? { id: pl.id, itemId, onReplaced: pl.onRemoved } : undefined });
+    },
+  });
+  if (library.trims[track.id]) items.push({ label: t("trim.reset"), icon: "scissors", action: () => player.resetTrim(track) });
   items.push({
     label: t("menu.copyLink"),
     icon: "link",

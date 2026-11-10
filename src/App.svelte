@@ -11,6 +11,7 @@
   import { player } from "./lib/stores/player.svelte";
   import { restoreSession, session } from "./lib/stores/session.svelte";
   import { settings } from "./lib/stores/settings.svelte";
+  import { sound } from "./lib/stores/sound.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import Shell from "./shell/Shell.svelte";
 
@@ -25,6 +26,8 @@
     await library.refresh().catch((e) => console.error("library load failed", e));
     await offline.refresh().catch((e) => console.error("offline state load failed", e));
     await player.restore();
+    // After the queue's volume is back, so startup keeps it; then each device's own EQ applies.
+    sound.attach().catch((e) => console.error("sound setup failed", e));
     api.trashPurgeExpired().catch(() => {});
     session.account = account;
   }

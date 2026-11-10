@@ -1,4 +1,4 @@
-//! External helper programs (yt-dlp now, ffmpeg later). They are not bundled: each is
+//! External helper programs (yt-dlp and ffmpeg). They are not bundled: each is
 //! downloaded the first time it's needed, verified against its published SHA-256, and kept
 //! in the app's data folder.
 
@@ -239,6 +239,25 @@ impl Tools {
             return Err(AppError::new("convert_failed", format!("ffmpeg: {last}")));
         }
         Ok(err)
+    }
+
+    /// Decodes a file's audio to mono 16-bit PCM at `rate` Hz (for waveforms).
+    pub async fn decode_mono(&self, input: &Path, rate: u32) -> AppResult<Vec<u8>> {
+        let exe = self.ffmpeg().await?;
+        let out = tokio::process::Command::new(exe)
+            .args(["-hide_banner", "-nostdin", "-v", "error", "-i"])
+            .arg(input)
+            .args(["-vn", "-ac", "1", "-ar", &rate.to_string(), "-f", "s16le", "-"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .kill_on_drop(true)
+            .output()
+            .await?;
+        if !out.status.success() {
+            let err = String::from_utf8_lossy(&out.stderr);
+            let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("failed");
+            return Err(AppError::new("convert_failed", format!("ffmpeg: {last}")));
+        }
+        Ok(out.stdout)
     }
 
     /// The codec of the first audio stream ("aac", "opus", "mp3", …), read from `ffmpeg -i`.

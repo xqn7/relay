@@ -7,6 +7,7 @@
     variant = "secondary",
     icon,
     full = false,
+    small = false,
     disabled = false,
     busy = false,
     type = "button",
@@ -17,6 +18,8 @@
     variant?: "primary" | "secondary" | "ghost";
     icon?: IconName;
     full?: boolean;
+    /** Compact, for toolbars. */
+    small?: boolean;
     disabled?: boolean;
     busy?: boolean;
     type?: "button" | "submit";
@@ -26,7 +29,7 @@
   } = $props();
 </script>
 
-<button class="btn {variant}" class:full {type} {title} disabled={disabled || busy} aria-busy={busy} {onclick}>
+<button class="btn {variant}" class:full class:small {type} {title} disabled={disabled || busy} aria-busy={busy} {onclick}>
   {#if busy}
     <span class="spin"><Icon name="loader" size={16} /></span>
   {:else if icon}
@@ -56,6 +59,11 @@
   .full {
     width: 100%;
     height: 42px;
+  }
+  .small {
+    height: 28px;
+    padding: 0 var(--s3);
+    border-radius: var(--r-sm);
   }
   .primary {
     background: var(--primary);

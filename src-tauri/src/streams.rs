@@ -225,6 +225,16 @@ pub async fn prepare(state: &Arc<AppState>, track: &Track, quality: Quality, ret
     Ok(start_buffer(state, &track.id, resolution, quality))
 }
 
+/// The song's whole audio file on disk, downloading it first if needed (waveforms, MP3 export).
+pub async fn audio_file(state: &Arc<AppState>, track: &Track) -> AppResult<PathBuf> {
+    if track.source == LOCAL {
+        return crate::local::path_for(state, &track.source_id);
+    }
+    let buf = prepare(state, track, Quality::Best, false).await?;
+    buf.wait_done().await?;
+    Ok(buf.path())
+}
+
 /// A song that is already complete on disk: nothing to download.
 fn complete_buffer(played: Track, stand_in: bool, mime: String, loudness_db: Option<f32>, path: PathBuf) -> Arc<Buffer> {
     let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);

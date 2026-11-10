@@ -58,3 +58,27 @@ pub fn watch(app: AppHandle) {
         }
     });
 }
+
+/// Chromium only lists audio outputs (ids and names) to pages that hold microphone permission.
+/// Setting that permission for the app's own origin makes the output picker work without a
+/// prompt; the microphone itself is never opened.
+pub fn allow_output_names(window: &tauri::WebviewWindow) {
+    let origin = if cfg!(dev) { "http://localhost:1420" } else { "http://tauri.localhost" };
+    let _ = window.with_webview(move |webview| {
+        use webview2_com::Microsoft::Web::WebView2::Win32::{
+            ICoreWebView2Profile4, ICoreWebView2_13, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+        };
+        use windows::core::{Interface, HSTRING};
+        let result = (|| -> Result<()> {
+            unsafe {
+                let core = webview.controller().CoreWebView2()?;
+                let profile: ICoreWebView2Profile4 = core.cast::<ICoreWebView2_13>()?.Profile()?.cast()?;
+                let done = webview2_com::SetPermissionStateCompletedHandler::create(Box::new(|_| Ok(())));
+                profile.SetPermissionState(COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, &HSTRING::from(origin), COREWEBVIEW2_PERMISSION_STATE_ALLOW, &done)
+            }
+        })();
+        if let Err(e) = result {
+            eprintln!("audio output names unavailable: {e}");
+        }
+    });
+}

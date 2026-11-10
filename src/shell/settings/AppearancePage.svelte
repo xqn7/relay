@@ -90,9 +90,29 @@
   </div>
 {/if}
 
-{#if visible("settings.upNext", "settings.upNextDesc") || visible("settings.idle", "settings.idleDesc")}
+{#if visible("settings.upNext", "settings.upNextDesc") || visible("settings.idle", "settings.idleDesc") || visible("settings.waveform", "settings.waveformDesc") || visible("settings.visualizer", "settings.visualizerDesc")}
   <h3>{t("settings.section.screen")}</h3>
   <div class="card">
+    {#if visible("settings.waveform", "settings.waveformDesc")}
+      <SettingRow label={t("settings.waveform")} desc={t("settings.waveformDesc")}>
+        <Toggle label={t("settings.waveform")} checked={v.waveform} onchange={(x) => settings.set("waveform", x)} />
+      </SettingRow>
+    {/if}
+    {#if visible("settings.visualizer", "settings.visualizerDesc")}
+      <SettingRow label={t("settings.visualizer")} desc={t("settings.visualizerDesc")}>
+        {#if v.visualizer}
+          <Segmented
+            label={t("settings.visualizerStyle")}
+            value={v.visualizerStyle}
+            options={[
+              { value: "bars", label: t("viz.bars") },
+              { value: "wave", label: t("viz.wave") },
+            ]}
+            onchange={(x) => settings.set("visualizerStyle", x)} />
+        {/if}
+        <Toggle label={t("settings.visualizer")} checked={v.visualizer} onchange={(x) => settings.set("visualizer", x)} />
+      </SettingRow>
+    {/if}
     {#if visible("settings.upNext", "settings.upNextDesc")}
       <SettingRow label={t("settings.upNext")} desc={t("settings.upNextDesc")}>
         <Toggle label={t("settings.upNext")} checked={v.upNext} onchange={(x) => settings.set("upNext", x)} />

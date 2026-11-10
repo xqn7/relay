@@ -1,10 +1,20 @@
 // User preferences with defaults (Liner's where Liner has the same setting). Every change is
 // saved immediately. Keys listed in DEVICE_KEYS belong to the PC, everything else to the account.
 import { api, type TranslateLang } from "../api";
+import { validEq, validUserPresets, type EqState, type UserPreset } from "../audio/eq";
 
 export type LyricsStyle = "karaoke" | "glow" | "bounce" | "fade";
 export const LYRICS_STYLES: LyricsStyle[] = ["karaoke", "glow", "bounce", "fade"];
 export const IDLE_MINUTES = [1, 2, 3, 5, 10];
+export const SPEED_MIN = 0.5;
+export const SPEED_MAX = 2;
+export const PITCH_RANGE = 12;
+
+/** What each output device remembers: its EQ and volume. Keyed by the device's name. */
+export interface DeviceProfile {
+  eq: EqState;
+  volume: number;
+}
 
 export const defaults = {
   autoplay: true,
@@ -27,12 +37,34 @@ export const defaults = {
   upNext: true,
   /** Minutes without input before the idle screen shows. */
   idleMinutes: 3,
+  /** Playback speed, pitch kept. */
+  speed: 1,
+  /** Semitones. */
+  pitch: 0,
+  sponsorBlock: true,
+  waveform: false,
+  visualizer: false,
+  visualizerStyle: "bars" as "bars" | "wave",
+  /** Output device by name; "" = the Windows default. */
+  outputDevice: "",
+  deviceProfiles: {} as Record<string, DeviceProfile>,
+  eqPresets: [] as UserPreset[],
 };
 
 export type Settings = typeof defaults;
 export type SettingKey = keyof Settings;
 
-const DEVICE_KEYS = new Set<SettingKey>(["maxCacheGb", "downloadLimitGb", "autoDownloadLiked", "showCachedInLibrary", "autoBackup", "backupFolder"]);
+const DEVICE_KEYS = new Set<SettingKey>([
+  "maxCacheGb",
+  "downloadLimitGb",
+  "autoDownloadLiked",
+  "showCachedInLibrary",
+  "autoBackup",
+  "backupFolder",
+  "outputDevice",
+  "deviceProfiles",
+  "eqPresets",
+]);
 export const CACHE_SIZES = [1, 3, 10, 0];
 export const DOWNLOAD_SIZES = [2, 5, 20, 0];
 
@@ -49,7 +81,22 @@ function valid<K extends SettingKey>(key: K, value: unknown): value is Settings[
   if (key === "translateTo") return value === "en" || value === "de";
   if (key === "idleMinutes") return IDLE_MINUTES.includes(value as number);
   if (key === "backupFolder") return typeof value === "string" && value.length < 1024;
+  if (key === "speed") return typeof value === "number" && value >= SPEED_MIN && value <= SPEED_MAX;
+  if (key === "pitch") return Number.isInteger(value) && Math.abs(value as number) <= PITCH_RANGE;
+  if (key === "visualizerStyle") return value === "bars" || value === "wave";
+  if (key === "outputDevice") return typeof value === "string" && value.length < 300;
+  if (key === "eqPresets") return validUserPresets(value);
+  if (key === "deviceProfiles") return validProfiles(value);
   return true;
+}
+
+function validProfiles(v: unknown): v is Record<string, DeviceProfile> {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const entries = Object.entries(v);
+  return (
+    entries.length <= 40 &&
+    entries.every(([k, p]) => k.length < 300 && typeof p === "object" && p !== null && validEq(p.eq) && typeof p.volume === "number" && p.volume >= 0 && p.volume <= 1)
+  );
 }
 
 class SettingsStore {

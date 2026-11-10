@@ -1,8 +1,8 @@
 // The player: owns the queue, drives the audio engine, talks to the backend, and keeps the
 // Windows media overlay and the saved queue in sync.
 import { listen } from "@tauri-apps/api/event";
-import { api, artistLine, IMPORT_ONLY, isAppError, type Prepared, type Track } from "../api";
-import { AudioEngine } from "../audio/engine";
+import { api, artistLine, formatTime, IMPORT_ONLY, isAppError, type Prepared, type Track, type Trim } from "../api";
+import { AudioEngine, type Jump } from "../audio/engine";
 import { t } from "../i18n/index.svelte";
 import * as Q from "../player/queue";
 import { dialogs } from "./dialogs.svelte";
@@ -22,6 +22,15 @@ const RADIO_BATCH = 25;
 const PREMATCH_AHEAD = 3;
 /** After this many songs in a row fail, stop instead of racing through the whole queue. */
 const MAX_FAILS_IN_A_ROW = 3;
+/** A–B markers start this far apart when first shown. */
+const DEFAULT_RANGE_MS = 30_000;
+const MIN_RANGE_MS = 1_000;
+
+/** Two markers on the progress bar, for the A–B loop, trims and clips. */
+export interface Markers {
+  aMs: number;
+  bMs: number;
+}
 
 interface Saved extends Q.QueueState {
   positionMs: number;
@@ -42,8 +51,18 @@ class Player {
   /** The track whose audio actually plays, when it is not the queued one (an imported song's
    * match, or a stand-in from another source). */
   via = $state<Track | null>(null);
+  /** The A–B markers on the progress bar, while they're shown. */
+  markers = $state<Markers | null>(null);
+  looping = $state(false);
+  /** Non-music sections SponsorBlock found in the playing video (seconds). */
+  skipSections = $state<[number, number][]>([]);
+  /** Called after the volume changed (the output device remembers it). */
+  onVolumeChange: (() => void) | null = null;
 
-  private engine: AudioEngine;
+  readonly engine: AudioEngine;
+  /** A clip preview stops here. */
+  private previewUntilMs: number | null = null;
+  private preloadedVia: Track | null = null;
   private loadToken = 0;
   private loadedUid: string | null = null;
   private restoreAtMs = 0;
@@ -294,6 +313,7 @@ class Player {
     this.engine.setMuted(this.muted);
     this.engine.setVolume(this.volume);
     this.scheduleSave();
+    this.onVolumeChange?.();
   }
 
   toggleMute(): void {
@@ -317,6 +337,9 @@ class Player {
     if (!item) return;
     this.loading = autoplay;
     this.via = null;
+    this.resetSongTools();
+    const trim = trimOf(item.track);
+    if (startMs === 0 && trim) startMs = trim.startMs;
     this.positionMs = startMs;
     this.durationMs = item.track.durationMs ?? 0;
     api.mediaTrack(mediaInfo(item.track)).catch(() => {});
@@ -328,7 +351,8 @@ class Player {
       this.loadedUid = item.uid;
       this.failsInARow = 0;
       this.retriedUid = null;
-      await this.engine.load(prepared.url, { startMs, autoplay, loudnessDb: prepared.loudnessDb });
+      await this.engine.load(prepared.url, { startMs, endMs: trim?.endMs ?? null, autoplay, loudnessDb: prepared.loudnessDb });
+      this.loadSkipSections(item, prepared.via);
       this.prefetchFollowing();
     } catch (e) {
       if (token !== this.loadToken) return;
@@ -411,8 +435,10 @@ class Player {
       const prepared = await this.prepare(item.track);
       // The queue may have changed while we waited; only preload if this is still next.
       if (token !== this.loadToken || Q.nextIndex(this.queue, true, this.skipItem) !== this.queue.items.indexOf(item)) return;
-      this.engine.preloadNext(prepared.url, prepared.loudnessDb);
+      const trim = trimOf(item.track);
+      this.engine.preloadNext(prepared.url, prepared.loudnessDb, trim?.startMs ?? 0, trim?.endMs ?? null);
       this.preloadedUid = item.uid;
+      this.preloadedVia = prepared.via;
     } catch {
       // Resolved again (with a visible error) when the song actually starts.
     }
@@ -444,6 +470,10 @@ class Player {
     if (this.loadedUid !== this.current?.uid) return;
     this.positionMs = pos;
     if (dur > 0) this.durationMs = dur;
+    if (this.previewUntilMs != null && this.playing && pos >= this.previewUntilMs) {
+      this.previewUntilMs = null;
+      this.pause();
+    }
     const now = Date.now();
     if (this.playing && now - this.lastPositionSave > POSITION_SAVE_MS) {
       this.lastPositionSave = now;
@@ -461,8 +491,10 @@ class Player {
     this.setQueue({ ...this.queue, index });
     this.loadedUid = item.uid;
     this.loadToken++;
-    this.via = null;
-    this.positionMs = 0;
+    this.via = this.preloadedVia;
+    this.resetSongTools();
+    this.loadSkipSections(item, this.preloadedVia);
+    this.positionMs = trimOf(item.track)?.startMs ?? 0;
     this.durationMs = item.track.durationMs ?? 0;
     this.retriedUid = null;
     api.mediaTrack(mediaInfo(item.track)).catch(() => {});
@@ -477,6 +509,12 @@ class Player {
     }
     if (i == null) {
       this.playing = false;
+      // Play again starts the song over, at its trimmed start.
+      const trim = this.current && trimOf(this.current.track);
+      if (trim) {
+        this.loadedUid = null;
+        this.restoreAtMs = trim.startMs;
+      }
       this.syncMedia(true);
       return;
     }
@@ -510,6 +548,131 @@ class Player {
     }
   }
 
+  // ---- A–B markers, loop, trim, skipped sections -------------------------------------------
+
+  /** Forgets the per-song tools when another song starts. */
+  private resetSongTools(): void {
+    this.markers = null;
+    this.looping = false;
+    this.previewUntilMs = null;
+    this.skipSections = [];
+    this.engine.setJumps([]);
+  }
+
+  /** Shows the markers: over the trim if the song has one, else from the current position. */
+  showMarkers(): void {
+    const dur = this.durationMs;
+    if (!this.current || dur <= 0 || this.markers) return;
+    const trim = trimOf(this.current.track);
+    if (trim) {
+      this.markers = { aMs: trim.startMs, bMs: trim.endMs ?? dur };
+      return;
+    }
+    const a = Math.min(this.positionMs, Math.max(0, dur - DEFAULT_RANGE_MS));
+    this.markers = { aMs: Math.round(a), bMs: Math.round(Math.min(dur, a + DEFAULT_RANGE_MS)) };
+  }
+
+  hideMarkers(): void {
+    this.markers = null;
+    this.looping = false;
+    this.updateJumps();
+  }
+
+  /** Moves the markers, keeping them inside the song and at least a second apart. */
+  setMarkers(aMs: number, bMs: number): void {
+    const dur = this.durationMs;
+    if (dur <= 0) return;
+    let a = Math.max(0, Math.min(aMs, dur - MIN_RANGE_MS));
+    let b = Math.max(MIN_RANGE_MS, Math.min(bMs, dur));
+    if (b - a < MIN_RANGE_MS) {
+      if (aMs !== this.markers?.aMs) a = b - MIN_RANGE_MS;
+      else b = a + MIN_RANGE_MS;
+    }
+    this.markers = { aMs: Math.round(a), bMs: Math.round(b) };
+    this.updateJumps();
+  }
+
+  toggleLoop(): void {
+    if (!this.markers) return;
+    this.looping = !this.looping;
+    this.updateJumps();
+    const { aMs, bMs } = this.markers;
+    if (this.looping && (this.positionMs < aMs || this.positionMs >= bMs)) this.seek(aMs);
+  }
+
+  /** Plays the marked part once, then pauses (clip preview). */
+  async previewMarked(): Promise<void> {
+    if (!this.markers) return;
+    this.looping = false;
+    this.updateJumps();
+    this.seek(this.markers.aMs);
+    this.previewUntilMs = this.markers.bMs;
+    if (!this.playing) await this.play();
+  }
+
+  /** Save as trim: the song always plays from A to B from now on. */
+  async saveTrim(): Promise<void> {
+    const cur = this.current;
+    if (!cur || !this.markers) return;
+    const { aMs, bMs } = this.markers;
+    // Markers at the very ends mean no trim on that side.
+    const trim: Trim = { startMs: aMs < 500 ? 0 : aMs, endMs: bMs > this.durationMs - 500 ? null : bMs };
+    if (trim.startMs === 0 && trim.endMs == null) return this.resetTrim(cur.track);
+    if (!(await library.setTrim(cur.track, trim))) return;
+    this.engine.setEnd(trim.endMs);
+    this.hideMarkers();
+    ui.toast(t("trim.saved", { title: cur.track.title, from: formatTime(aMs), to: formatTime(trim.endMs ?? this.durationMs) }), "scissors", { label: t("toast.undo"), run: () => this.resetTrim(cur.track) });
+  }
+
+  async resetTrim(track: Track): Promise<void> {
+    if (!(await library.setTrim(track, null))) return;
+    if (this.current?.track.id === track.id) this.engine.setEnd(null);
+  }
+
+  private updateJumps(): void {
+    const jumps: Jump[] = [];
+    if (this.looping && this.markers) jumps.push({ fromS: this.markers.bMs / 1000, toS: this.markers.aMs / 1000 });
+    if (settings.values.sponsorBlock) for (const [a, b] of this.skipSections) jumps.push({ fromS: a, toS: b });
+    this.engine.setJumps(jumps);
+  }
+
+  /** SponsorBlock's non-music sections (talking, skits) of a YouTube music video. */
+  private async loadSkipSections(item: Q.QueueItem, via: Track | null): Promise<void> {
+    const played = via ?? item.track;
+    if (!settings.values.sponsorBlock || played.source !== "youtube" || !offline.online) return;
+    try {
+      const found = await api.sponsorSegments(played.sourceId);
+      if (this.current?.uid !== item.uid || found.length === 0) return;
+      this.skipSections = found;
+      this.updateJumps();
+      // An intro right at the start is skipped straight away.
+      const first = found[0];
+      const pos = this.engine.positionMs / 1000;
+      if (first[0] < 1 && pos < first[1] && pos < 3) this.seek(first[1] * 1000);
+    } catch {
+      // Without SponsorBlock the song simply plays in full.
+    }
+  }
+
+  /** Turning SponsorBlock on or off applies to the playing song right away. */
+  applySkipSetting(): void {
+    const cur = this.current;
+    if (settings.values.sponsorBlock && cur && this.skipSections.length === 0) this.loadSkipSections(cur, this.via);
+    else this.updateJumps();
+  }
+
+  /** Plays another version of a song: in its place when it is the one playing, else right away. */
+  switchVersion(original: Track, version: Track): void {
+    const cur = this.current;
+    if (cur && cur.track.id === original.id) {
+      this.setQueue({ ...this.queue, items: this.queue.items.map((it) => (it.uid === cur.uid ? { ...it, track: version } : it)) });
+      this.loadCurrent(true);
+    } else {
+      this.playNextTracks([version]);
+      if (cur) this.next();
+    }
+  }
+
   // ---- persistence & OS ----------------------------------------------------------------
 
   private syncMedia(force = false): void {
@@ -530,6 +693,10 @@ class Player {
     const saved: Saved = { ...this.queue, positionMs: Math.round(this.positionMs), volume: this.volume, muted: this.muted };
     await api.queueSave($state.snapshot(saved));
   }
+}
+
+function trimOf(track: Track): Trim | null {
+  return library.trims[track.id] ?? null;
 }
 
 function mediaInfo(track: Track) {
