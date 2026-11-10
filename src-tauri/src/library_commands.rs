@@ -102,6 +102,9 @@ pub fn playlist_replace(state: St, id: String, item_id: String, track: Track) ->
 
 #[tauri::command]
 pub fn playlist_played(state: St, id: String) -> AppResult<()> {
+    if state.private.load(std::sync::atomic::Ordering::Relaxed) {
+        return Ok(());
+    }
     library::count_play(&state.db, &current(&state)?.id, &id)
 }
 
@@ -211,7 +214,7 @@ fn latest(p: &ArtistPage) -> Vec<Collection> {
     all
 }
 
-async fn cached_artist(state: &Arc<AppState>, source: &str, id: &str) -> AppResult<ArtistPage> {
+pub(crate) async fn cached_artist(state: &Arc<AppState>, source: &str, id: &str) -> AppResult<ArtistPage> {
     let key = format!("{source}:{id}");
     if let Some((at, page)) = state.artist_cache.lock().unwrap_or_else(|p| p.into_inner()).get(&key) {
         if at.elapsed() < ARTIST_CACHE_TTL {

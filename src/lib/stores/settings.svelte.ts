@@ -9,6 +9,10 @@ export const IDLE_MINUTES = [1, 2, 3, 5, 10];
 export const SPEED_MIN = 0.5;
 export const SPEED_MAX = 2;
 export const PITCH_RANGE = 12;
+export type BackgroundMode = "cover" | "image" | "off";
+/** Where a custom background image is used. The mini player arrives in Phase 7 and reads it then. */
+export type BackgroundPlace = "app" | "fullscreen" | "idle" | "mini";
+export const BACKGROUND_PLACES: BackgroundPlace[] = ["app", "fullscreen", "idle", "mini"];
 
 /** What each output device remembers: its EQ and volume. Keyed by the device's name. */
 export interface DeviceProfile {
@@ -49,6 +53,10 @@ export const defaults = {
   outputDevice: "",
   deviceProfiles: {} as Record<string, DeviceProfile>,
   eqPresets: [] as UserPreset[],
+  /** Cover colors (moving backdrop), a custom image, or a plain static dark background. */
+  background: "cover" as BackgroundMode,
+  backgroundId: "",
+  backgroundWhere: [...BACKGROUND_PLACES] as BackgroundPlace[],
 };
 
 export type Settings = typeof defaults;
@@ -87,6 +95,9 @@ function valid<K extends SettingKey>(key: K, value: unknown): value is Settings[
   if (key === "outputDevice") return typeof value === "string" && value.length < 300;
   if (key === "eqPresets") return validUserPresets(value);
   if (key === "deviceProfiles") return validProfiles(value);
+  if (key === "background") return value === "cover" || value === "image" || value === "off";
+  if (key === "backgroundId") return typeof value === "string" && value.length <= 64;
+  if (key === "backgroundWhere") return Array.isArray(value) && value.length <= 4 && value.every((p) => BACKGROUND_PLACES.includes(p));
   return true;
 }
 

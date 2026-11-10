@@ -6,6 +6,7 @@
   import Spinner from "../lib/components/Spinner.svelte";
   import Tile from "../lib/components/Tile.svelte";
   import { t } from "../lib/i18n/index.svelte";
+  import { artistMenu, collectionMenu } from "../lib/pins";
   import { library } from "../lib/stores/library.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -43,7 +44,10 @@
 {:else}
   {#each rows as r (r.artist.source + r.artist.artistId)}
     <section>
-      <button class="artist" onclick={() => ui.open({ name: "artist", source: r.artist.source, id: r.artist.artistId, artistName: r.artist.name })}>
+      <button
+        class="artist"
+        onclick={() => ui.open({ name: "artist", source: r.artist.source, id: r.artist.artistId, artistName: r.artist.name })}
+        oncontextmenu={(e) => artistMenu(e, { source: r.artist.source, id: r.artist.artistId, name: r.artist.name, avatar: r.artist.avatar })}>
         <Cover src={r.artist.avatar} size={40} round fallback="user" />
         <span class="name">{r.artist.name}</span>
         <Icon name="forward" size={16} />
@@ -55,7 +59,7 @@
       {:else}
         <div class="grid">
           {#each r.releases as c (c.kind + c.id)}
-            <Tile title={c.title} subtitle={c.year ? String(c.year) : ""} cover={c.cover} icon="disc" onclick={() => open(c)} />
+            <Tile title={c.title} subtitle={c.year ? String(c.year) : ""} cover={c.cover} icon="disc" onclick={() => open(c)} onmenu={(e) => collectionMenu(e, c)} />
           {/each}
         </div>
       {/if}

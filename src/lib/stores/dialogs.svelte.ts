@@ -11,7 +11,9 @@ export type Dialog =
   | { kind: "editLocal"; track: Track }
   | { kind: "merge"; playlistId: string }
   | { kind: "connection" }
-  | { kind: "versions"; track: Track; playlist?: { id: string; itemId: string; onReplaced: () => void } };
+  | { kind: "versions"; track: Track; playlist?: { id: string; itemId: string; onReplaced: () => void } }
+  /** Crops a picked image to `aspect` (width / height) and hands back a JPEG `outWidth` wide. */
+  | { kind: "crop"; title: string; file: File; aspect: number; outWidth: number; round?: boolean; onDone: (jpeg: Uint8Array) => Promise<void> };
 
 class DialogStore {
   current = $state<Dialog | null>(null);

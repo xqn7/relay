@@ -10,6 +10,7 @@
   import type { Rgb } from "../../lib/backdrop/colors";
   import SeekBar from "../../lib/components/SeekBar.svelte";
   import { dialogs } from "../../lib/stores/dialogs.svelte";
+  import { history } from "../../lib/stores/history.svelte";
   import { settings } from "../../lib/stores/settings.svelte";
   import RangePanel from "../RangePanel.svelte";
   import Visualizer from "./Visualizer.svelte";
@@ -56,7 +57,7 @@
 <svelte:window onkeydown={onKey} />
 
 <div class="full" role="dialog" aria-modal="true" aria-label={t("full.title")} transition:fly={{ y: 24, duration: 220 }}>
-  <Backdrop cover={cover} full bind:colors />
+  <Backdrop cover={cover} place="fullscreen" bind:colors />
   {#if settings.values.visualizer && track}<Visualizer {colors} style={settings.values.visualizerStyle} />{/if}
   <div class="top" data-tauri-drag-region>
     <IconButton icon="chevronDown" label={t("full.close")} size={20} onclick={close} />
@@ -92,6 +93,7 @@
                       openArtist(a, tr.source);
                     }}>{a.name}</button
                   >{/each}
+                {#if history.plays(tr) > 0}<span class="plays"> · {t("plays.count", { n: history.plays(tr) })}</span>{/if}
               </p>
             </div>
           {/each}
@@ -242,6 +244,9 @@
     color: var(--text);
     text-decoration: underline;
     text-underline-offset: 3px;
+  }
+  .plays {
+    color: var(--text-3);
   }
   .times {
     display: flex;

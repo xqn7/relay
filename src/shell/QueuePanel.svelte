@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flip } from "svelte/animate";
+  import { spring } from "../lib/motion";
   import { fly } from "svelte/transition";
   import { artistLine } from "../lib/api";
   import { playsFrom } from "../lib/navigate";
@@ -13,13 +14,6 @@
   import { ui } from "../lib/stores/ui.svelte";
   import { dialogs } from "../lib/stores/dialogs.svelte";
   import { library } from "../lib/stores/library.svelte";
-
-  // A soft spring: overshoots slightly, then settles.
-  const spring = (x: number) => {
-    const s = 0.9;
-    const t = x - 1;
-    return t * t * ((s + 1) * t + s) + 1;
-  };
 
   let drag = $state<{ uid: string; startY: number; offset: number; rowH: number } | null>(null);
   const base = $derived(player.queue.index + 1);
@@ -88,6 +82,9 @@
     {/if}
 
     <h3>{t("queue.nextUp")}</h3>
+    {#if player.queue.radio}
+      <p class="radio"><Icon name="radio" size={14} /><span class="truncate">{t("queue.radio", { title: player.queue.radio })}</span></p>
+    {/if}
     {#if player.upcoming.length === 0}
       <p class="empty">{t("queue.empty")}</p>
     {:else}
@@ -124,6 +121,14 @@
 </aside>
 
 <style>
+  .radio {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: -4px 8px 8px;
+    font-size: var(--fs-xs);
+    color: var(--text-2);
+  }
   .panel {
     position: fixed;
     top: 56px;

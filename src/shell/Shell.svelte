@@ -12,6 +12,7 @@
   import ArtistPage from "../pages/ArtistPage.svelte";
   import FolderPage from "../pages/FolderPage.svelte";
   import Home from "../pages/Home.svelte";
+  import MixPage from "../pages/MixPage.svelte";
   import Library from "../pages/Library.svelte";
   import ListPage from "../pages/ListPage.svelte";
   import TrashPage from "../pages/TrashPage.svelte";
@@ -96,7 +97,7 @@
 
 <svelte:window onkeydown={onKey} onmouseup={onMouse} />
 
-<Backdrop cover={backdropCover} />
+<Backdrop cover={backdropCover} bind:colors={ui.coverColors} />
 <TitleBar {scrollTop} />
 <Sidebar />
 
@@ -124,6 +125,13 @@
         <AlbumPage source={ui.route.source} id={ui.route.id} />
       {:else if ui.route.name === "artist"}
         <ArtistPage source={ui.route.source} id={ui.route.id} name={ui.route.artistName} />
+      {:else if ui.route.name === "discover"}
+        <!-- Pages visited now and then load their code on first visit, keeping startup lean. -->
+        {#await import("../pages/DiscoverPage.svelte") then m}<m.default />{/await}
+      {:else if ui.route.name === "mix"}
+        <MixPage number={ui.route.number} />
+      {:else if ui.route.name === "profile"}
+        {#await import("../pages/ProfilePage.svelte") then m}<m.default />{/await}
       {/if}
     </div>
   {/key}
@@ -136,6 +144,10 @@
 {#if ui.fullscreenOpen}<FullscreenPlayer />{/if}
 {#if ui.searchOpen}<SearchPopup />{/if}
 {#if ui.settingsOpen}<Settings {onSignOut} />{/if}
+<!-- Wrapped is opened rarely, so its code only loads when it's needed. -->
+{#if ui.wrapped}
+  {#await import("./wrapped/WrappedView.svelte") then m}<m.default period={ui.wrapped} />{/await}
+{/if}
 <Menu />
 <DialogHost />
 <IdleScreen />

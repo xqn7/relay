@@ -11,6 +11,8 @@
   import SourceBadge from "../lib/components/SourceBadge.svelte";
   import Spinner from "../lib/components/Spinner.svelte";
   import { t } from "../lib/i18n/index.svelte";
+  import { history } from "../lib/stores/history.svelte";
+  import { menu } from "../lib/stores/menu.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { settings } from "../lib/stores/settings.svelte";
   import { sound } from "../lib/stores/sound.svelte";
@@ -36,6 +38,18 @@
   );
   const volumeIcon = $derived(player.muted || player.volume === 0 ? "volumeOff" : player.volume < 0.5 ? "volumeLow" : "volume");
   let volumeOpen = $state(false);
+
+  function playerMenu(e: MouseEvent) {
+    menu.show(e, [
+      { label: t("menu.startRadio"), icon: "radio", disabled: !track, action: () => track && player.startRadio(track) },
+      {
+        label: history.private ? t("private.end") : t("private.start"),
+        icon: "lock",
+        divider: true,
+        action: () => history.setPrivate(!history.private),
+      },
+    ]);
+  }
 
   function wheelVolume(e: WheelEvent) {
     e.preventDefault();
@@ -69,6 +83,9 @@
         {/each}
       </div>
       <LikeButton {track} />
+      {#if history.private}
+        <span class="private" title={t("private.hint")}><Icon name="lock" size={11} />{t("private.badge")}</span>
+      {/if}
     {:else}
       <div class="cover-empty"><Icon name="music" size={18} /></div>
       <div class="meta"><div class="title muted">{t("player.nothing")}</div></div>
@@ -113,6 +130,7 @@
     <span data-sound-toggle style="display: contents"><IconButton icon="sliders" label={t("sound.title")} active={soundOpen || soundChanged} onclick={() => (soundOpen = !soundOpen)} /></span>
     <IconButton icon="micVocal" label={t("full.lyrics")} active={ui.fullscreenOpen} disabled={!track} onclick={() => (ui.fullscreenOpen = !ui.fullscreenOpen)} />
     <IconButton icon="queue" label={t("player.queue")} active={ui.queueOpen} onclick={() => (ui.queueOpen = !ui.queueOpen)} />
+    <IconButton icon="more" label={t("player.more")} onclick={playerMenu} />
   </div>
 </footer>
 
@@ -120,6 +138,20 @@
 {#if soundOpen}<SoundPanel onClose={() => (soundOpen = false)} />{/if}
 
 <style>
+  /* Shown while a private session is on: a quiet reminder that nothing is being recorded. */
+  .private {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: var(--r-full);
+    background: rgba(255, 255, 255, 0.1);
+    font-size: var(--fs-xs);
+    font-weight: 600;
+    color: var(--text-2);
+  }
   .bar {
     position: fixed;
     left: calc(var(--sidebar-w) + 12px);

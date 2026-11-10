@@ -40,6 +40,8 @@ const TABLES: &[&str] = &[
     "tracks",
     "lyrics",
     "trims",
+    "plays",
+    "speed_dial",
 ];
 
 fn to_json(v: ValueRef) -> Value {

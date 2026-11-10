@@ -1,5 +1,6 @@
 <script lang="ts">
   import logo from "../lib/assets/logo.svg";
+  import Avatar from "../lib/components/Avatar.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import { t } from "../lib/i18n/index.svelte";
@@ -8,6 +9,7 @@
   import { dnd, dropTarget, type Payload } from "../lib/stores/dnd.svelte";
   import { library } from "../lib/stores/library.svelte";
   import { menu } from "../lib/stores/menu.svelte";
+  import { session } from "../lib/stores/session.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import { folderDrop, folderPress, playlistDrop, playlistPress } from "../pages/libraryDrag";
 
@@ -161,6 +163,11 @@
     </button>
   </div>
 
+  {#if session.account}
+    <button class="me" class:active={isRoute("profile")} aria-label={t("profile.open")} title={session.account.displayName} onclick={() => ui.open({ name: "profile" })}>
+      <Avatar src={session.account.avatar} name={session.account.displayName} size={28} />
+    </button>
+  {/if}
   <button class="settings" class:active={ui.settingsOpen} aria-label={t("nav.settings")} title={t("nav.settings")} onclick={() => (ui.settingsOpen = true)}>
     <Icon name="settings" size={20} />
   </button>
@@ -286,6 +293,14 @@
   .add {
     width: 32px;
     height: 32px;
+  }
+  /* The profile picture sits above Settings at the bottom of the rail. */
+  .me {
+    margin-top: auto;
+    border-radius: 50%;
+  }
+  .me + .settings {
+    margin-top: 6px;
   }
   .settings {
     margin-top: auto;

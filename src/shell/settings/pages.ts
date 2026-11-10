@@ -40,6 +40,8 @@ export const pages: PageDef[] = [
     icon: "palette",
     label: "settings.page.appearance",
     rows: [
+      ["bg.mode", "bg.modeDesc"],
+      ["bg.mix", "bg.mixDesc"],
       ["settings.lyricsStyle", "settings.lyricsStyleDesc"],
       ["settings.translateTo", "settings.translateToDesc"],
       ["settings.deepl", "settings.deeplDesc"],

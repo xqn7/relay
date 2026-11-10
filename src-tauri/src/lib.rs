@@ -6,6 +6,7 @@ mod covers;
 mod db;
 mod error;
 mod export;
+mod history;
 mod http;
 mod importer;
 mod library;
@@ -17,7 +18,10 @@ mod m3u;
 mod matcher;
 mod matching;
 mod media;
+mod mixes;
 mod network;
+mod personal_commands;
+mod profile;
 mod resolver;
 mod secrets;
 mod sound;
@@ -37,6 +41,7 @@ use http::Http;
 use media::MediaControls;
 use sources::{soundcloud::SoundCloud, youtube::YouTube};
 use std::collections::HashMap;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use streams::Streams;
@@ -64,6 +69,11 @@ pub struct AppState {
     pub sponsor: sound::Sponsor,
     /// The last MP3 export, for "Show in folder".
     pub last_export: Mutex<Option<std::path::PathBuf>>,
+    /// Private session: nothing is recorded while on. Never saved, so a restart ends it.
+    pub private: AtomicBool,
+    /// Profile pictures and background images.
+    pub user_dir: std::path::PathBuf,
+    pub discover: mixes::DiscoverCache,
 }
 
 /// Only the app's own pages may load in the window; everything else opens in the browser.
@@ -120,6 +130,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         waveform_lock: tokio::sync::Mutex::new(()),
         sponsor: sound::Sponsor::default(),
         last_export: Mutex::new(None),
+        private: AtomicBool::new(false),
+        user_dir: profile::dir(&data_dir),
+        discover: mixes::DiscoverCache::default(),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
         sc: SoundCloud::new(http.clone(), db.clone()),
@@ -205,6 +218,8 @@ pub fn run() {
                     covers::serve(state, request).await
                 } else if path.starts_with("/art/") {
                     covers::serve_local(&state, path)
+                } else if path.starts_with("/user/") {
+                    profile::serve(&state.user_dir, path)
                 } else {
                     streams::serve(state, request).await
                 };
@@ -321,6 +336,26 @@ pub fn run() {
             sound_commands::other_versions,
             sound_commands::export_mp3,
             sound_commands::export_reveal,
+            personal_commands::play_record,
+            personal_commands::play_listened,
+            personal_commands::play_counts,
+            personal_commands::home_lists,
+            personal_commands::home_mixes,
+            personal_commands::discover,
+            personal_commands::listening_stats,
+            personal_commands::private_get,
+            personal_commands::private_set,
+            personal_commands::profile_image_set,
+            personal_commands::profile_image_clear,
+            personal_commands::profile_name_set,
+            personal_commands::image_save,
+            personal_commands::backgrounds_list,
+            personal_commands::background_add,
+            personal_commands::background_look_set,
+            personal_commands::background_delete,
+            personal_commands::speed_dial_list,
+            personal_commands::speed_dial_set,
+            personal_commands::speed_dial_order,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

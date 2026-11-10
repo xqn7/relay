@@ -11,6 +11,7 @@
   import { playsFrom } from "../lib/navigate";
   import { openPlaylistMenu } from "../lib/playlistMenu";
   import { dialogs } from "../lib/stores/dialogs.svelte";
+  import { history } from "../lib/stores/history.svelte";
   import { fail, library } from "../lib/stores/library.svelte";
   import { menu, type MenuItem } from "../lib/stores/menu.svelte";
   import { offline } from "../lib/stores/offline.svelte";
@@ -21,7 +22,7 @@
   import EmptyState from "./EmptyState.svelte";
   import ListHeader from "./ListHeader.svelte";
 
-  type Sort = "custom" | "added" | "title" | "artist" | "length";
+  type Sort = "custom" | "added" | "title" | "artist" | "length" | "plays";
   type SourceFilter = "all" | "youtube" | "soundcloud" | "local";
   type DownloadFilter = "all" | "yes" | "no";
 
@@ -105,6 +106,8 @@
         return by((i) => fold(artistLine(i.track)));
       case "length":
         return by((i) => i.track.durationMs ?? 0);
+      case "plays":
+        return by((i) => history.plays(i.track), -1);
       default:
         return list;
     }
@@ -170,6 +173,7 @@
       ["title", t("sort.title")],
       ["artist", t("sort.artist")],
       ["length", t("sort.length")],
+      ["plays", t("sort.plays")],
     ];
     menu.show(e, options.map(([value, label]) => ({ label, icon: sort === value ? "check" : "sort", action: () => (sort = value) })));
   }

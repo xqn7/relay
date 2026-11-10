@@ -7,6 +7,8 @@
   import TrackList from "../lib/components/TrackList.svelte";
   import { t } from "../lib/i18n/index.svelte";
   import { openArtist } from "../lib/navigate";
+  import { albumPin } from "../lib/pins";
+  import { speedDial } from "../lib/stores/speedDial.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import { fold, matchesQuery } from "../lib/text";
@@ -46,6 +48,7 @@
     if (player.queue.shuffle !== shuffle) player.toggleShuffle();
     player.playTracks(album.tracks, shuffle ? Math.floor(Math.random() * album.tracks.length) : 0);
   }
+  const pin = $derived(album ? albumPin(source, id, album.title, artistLine(album), album.cover) : null);
 </script>
 
 {#if error}
@@ -67,6 +70,14 @@
     {#snippet actions()}
       <Button variant="primary" icon="play" disabled={!album!.tracks.length} onclick={() => play(false)}>{t("playlist.playAll")}</Button>
       <IconButton icon="shuffle" label={t("playlist.shuffle")} variant="solid" onclick={() => play(true)} />
+      {#if pin}
+        <IconButton
+          icon={speedDial.isPinned(pin) ? "pinOff" : "pin"}
+          label={speedDial.isPinned(pin) ? t("dial.unpin") : t("dial.pin")}
+          variant="solid"
+          active={speedDial.isPinned(pin)}
+          onclick={() => speedDial.toggle(pin)} />
+      {/if}
       {#if album!.link}<IconButton icon="external" label={t("album.openOnline")} variant="solid" onclick={() => api.openExternal(album!.link!)} />{/if}
     {/snippet}
     {#snippet tools()}

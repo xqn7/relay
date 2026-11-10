@@ -7,7 +7,9 @@
   import Tile from "../lib/components/Tile.svelte";
   import TrackList from "../lib/components/TrackList.svelte";
   import { t } from "../lib/i18n/index.svelte";
+  import { artistMenu, artistPin, collectionMenu } from "../lib/pins";
   import { library } from "../lib/stores/library.svelte";
+  import { speedDial } from "../lib/stores/speedDial.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import { errorText } from "../shell/dialogs/importText";
@@ -38,6 +40,7 @@
   });
 
   const following = $derived(library.isFollowing(source, id));
+  const pin = $derived(page ? artistPin({ source, id, name: page.name, avatar: page.avatar }) : null);
   const top = $derived(page ? page.topTracks.slice(0, allTop ? 10 : 5) : []);
 
   function toggleFollow() {
@@ -80,6 +83,14 @@
           <IconButton icon="radio" label={t("menu.startRadio")} variant="solid" onclick={() => player.startRadio(page!.topTracks[0])} />
         {/if}
         <Button variant="secondary" icon={following ? "userCheck" : "userPlus"} onclick={toggleFollow}>{following ? t("artist.following") : t("artist.follow")}</Button>
+        {#if pin}
+          <IconButton
+            icon={speedDial.isPinned(pin) ? "pinOff" : "pin"}
+            label={speedDial.isPinned(pin) ? t("dial.unpin") : t("dial.pin")}
+            variant="solid"
+            active={speedDial.isPinned(pin)}
+            onclick={() => speedDial.toggle(pin)} />
+        {/if}
         {#if page.link}<IconButton icon="external" label={t("album.openOnline")} variant="solid" onclick={() => api.openExternal(page!.link!)} />{/if}
       </div>
     </div>
@@ -101,7 +112,7 @@
         <h2>{group.label}</h2>
         <div class="grid">
           {#each group.list as c (c.kind + c.id)}
-            <Tile title={c.title} subtitle={releaseSub(c)} cover={c.cover} icon="disc" onclick={() => openRelease(c)} />
+            <Tile title={c.title} subtitle={releaseSub(c)} cover={c.cover} icon="disc" onclick={() => openRelease(c)} onmenu={(e) => collectionMenu(e, c)} />
           {/each}
         </div>
       </section>
@@ -123,7 +134,13 @@
       <h2>{t("artist.similar")}</h2>
       <div class="grid">
         {#each page.similar.slice(0, 12) as a (a.id)}
-          <Tile title={a.name} cover={a.avatar} round icon="user" onclick={() => ui.open({ name: "artist", source: a.source, id: a.id, artistName: a.name })} />
+          <Tile
+            title={a.name}
+            cover={a.avatar}
+            round
+            icon="user"
+            onclick={() => ui.open({ name: "artist", source: a.source, id: a.id, artistName: a.name })}
+            onmenu={(e) => artistMenu(e, a)} />
         {/each}
       </div>
     </section>

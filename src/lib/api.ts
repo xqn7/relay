@@ -61,6 +61,8 @@ export interface Account {
   id: string;
   email: string;
   displayName: string;
+  avatar: string | null;
+  banner: string | null;
 }
 
 export interface Prepared {
@@ -275,6 +277,68 @@ export interface ExportDone {
   file: string | null;
 }
 
+export interface Counted {
+  track: Track;
+  plays: number;
+}
+
+export interface ArtistStat {
+  name: string;
+  plays: number;
+  minutes: number;
+  cover: string | null;
+}
+
+export interface HomeLists {
+  recent: Track[];
+  most: Counted[];
+  topArtists: ArtistStat[];
+}
+
+export interface Mix {
+  number: number;
+  artists: string[];
+  tracks: Track[];
+}
+
+export interface Suggestion {
+  artist: ArtistCard;
+  because: string;
+}
+
+export interface Stats {
+  minutes: number;
+  plays: number;
+  songs: number;
+  artists: number;
+  topSongs: Counted[];
+  topArtists: ArtistStat[];
+  topDay: { day: number; minutes: number } | null;
+  longestStreak: number;
+  streakStart: number | null;
+  firstPlay: number | null;
+}
+
+export type PinKind = "playlist" | "album" | "artist";
+
+export interface Pin {
+  kind: PinKind;
+  /** Catalog source for albums and artists; "" for playlists. */
+  source: "" | SearchSource;
+  id: string;
+  title: string;
+  subtitle: string;
+  cover: string | null;
+}
+
+export interface Background {
+  id: string;
+  url: string;
+  animated: boolean;
+  /** Unchecked JSON from the database; read through `readLook`. */
+  look: unknown;
+}
+
 /** Error shape returned by every failing command. */
 export interface AppError {
   code: string;
@@ -435,6 +499,29 @@ export const api = {
   exportMp3: (tracks: Track[], startMs: number | null = null, endMs: number | null = null) =>
     invoke<ExportDone | null>("export_mp3", { tracks: tracks.map(plain), startMs, endMs }),
   exportReveal: () => invoke<void>("export_reveal"),
+
+  playRecord: (track: Track, ms: number) => invoke<string | null>("play_record", { track: plain(track), ms: Math.round(ms) }),
+  playListened: (id: string, ms: number) => invoke<void>("play_listened", { id, ms: Math.round(ms) }),
+  playCounts: () => invoke<Record<string, number>>("play_counts"),
+  homeLists: () => invoke<HomeLists>("home_lists"),
+  homeMixes: (today: string) => invoke<Mix[]>("home_mixes", { today }),
+  discover: () => invoke<Suggestion[]>("discover"),
+  listeningStats: (from: number, to: number) =>
+    invoke<Stats>("listening_stats", { from: Math.floor(from), to: Math.floor(to), tzMinutes: -new Date().getTimezoneOffset() }),
+  privateGet: () => invoke<boolean>("private_get"),
+  privateSet: (on: boolean) => invoke<void>("private_set", { on }),
+  // Images go as raw bytes (no JSON encoding); the extra details travel in headers.
+  profileImageSet: (kind: "avatar" | "banner", bytes: Uint8Array) => invoke<Account>("profile_image_set", bytes, { headers: { kind } }),
+  profileImageClear: (kind: "avatar" | "banner") => invoke<Account>("profile_image_clear", { kind }),
+  profileNameSet: (name: string) => invoke<Account>("profile_name_set", { name }),
+  imageSave: (png: Uint8Array, name: string) => invoke<boolean>("image_save", png, { headers: { name: encodeURIComponent(name) } }),
+  backgroundsList: () => invoke<Background[]>("backgrounds_list"),
+  backgroundAdd: (bytes: Uint8Array) => invoke<Background>("background_add", bytes),
+  backgroundLookSet: (id: string, look: object) => invoke<void>("background_look_set", { id, look }),
+  backgroundDelete: (id: string) => invoke<void>("background_delete", { id }),
+  speedDialList: () => invoke<Pin[]>("speed_dial_list"),
+  speedDialSet: (pin: Pin, on: boolean) => invoke<void>("speed_dial_set", { pin, on }),
+  speedDialOrder: (keys: string[]) => invoke<void>("speed_dial_order", { keys }),
 };
 
 /** "1.2 GB", "340 MB". */

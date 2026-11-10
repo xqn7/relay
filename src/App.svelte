@@ -5,6 +5,9 @@
   import { api, type Account } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
   import { t } from "./lib/i18n/index.svelte";
+  import { backgrounds } from "./lib/stores/backgrounds.svelte";
+  import { history } from "./lib/stores/history.svelte";
+  import { home } from "./lib/stores/home.svelte";
   import { imports } from "./lib/stores/imports.svelte";
   import { library } from "./lib/stores/library.svelte";
   import { offline } from "./lib/stores/offline.svelte";
@@ -12,6 +15,7 @@
   import { restoreSession, session } from "./lib/stores/session.svelte";
   import { settings } from "./lib/stores/settings.svelte";
   import { sound } from "./lib/stores/sound.svelte";
+  import { speedDial } from "./lib/stores/speedDial.svelte";
   import { ui } from "./lib/stores/ui.svelte";
   import Shell from "./shell/Shell.svelte";
 
@@ -21,10 +25,15 @@
     await settings.load().catch(() => settings.reset());
     if (!attached) {
       attached = true;
-      await Promise.all([player.attach(), library.attach(), imports.attach(), offline.attach()]);
+      await Promise.all([player.attach(), library.attach(), imports.attach(), offline.attach(), history.attach()]);
     }
     await library.refresh().catch((e) => console.error("library load failed", e));
     await offline.refresh().catch((e) => console.error("offline state load failed", e));
+    await Promise.all([
+      history.refresh().catch((e) => console.error("play counts load failed", e)),
+      speedDial.refresh().catch((e) => console.error("speed dial load failed", e)),
+      backgrounds.refresh().catch((e) => console.error("backgrounds load failed", e)),
+    ]);
     await player.restore();
     // After the queue's volume is back, so startup keeps it; then each device's own EQ applies.
     sound.attach().catch((e) => console.error("sound setup failed", e));
@@ -38,6 +47,10 @@
     await api.signOut();
     library.reset();
     offline.reset();
+    history.reset();
+    speedDial.reset();
+    home.reset();
+    backgrounds.reset();
     settings.reset();
     ui.resetNav();
     session.account = null;

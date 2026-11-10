@@ -8,6 +8,7 @@
   import TrackList from "../lib/components/TrackList.svelte";
   import type { IconName } from "../lib/icons";
   import { t } from "../lib/i18n/index.svelte";
+  import { artistMenu, collectionMenu } from "../lib/pins";
   import { offline } from "../lib/stores/offline.svelte";
   import { player, sourceLabel } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -152,7 +153,7 @@
       <div class="scroll" role="presentation" onclick={remember}>
         {#if artists.length}
           {#each artists as a (a.source + a.id)}
-            <button class="entity" onclick={() => openArtist(a.source, a.id, a.name)}>
+            <button class="entity" onclick={() => openArtist(a.source, a.id, a.name)} oncontextmenu={(e) => artistMenu(e, a)}>
               <Cover src={a.avatar} size={44} round fallback="user" />
               <span class="name truncate">{a.name}</span>
             </button>
@@ -166,7 +167,7 @@
           {#if group.list.length}
             {#if kind === "all"}<h4>{group.label}</h4>{/if}
             {#each group.list as c (c.source + c.id)}
-              <button class="entity" onclick={() => openCollection(c)}>
+              <button class="entity" onclick={() => openCollection(c)} oncontextmenu={(e) => collectionMenu(e, c)}>
                 <Cover src={c.cover} size={44} fallback={group.icon} />
                 <span class="col">
                   <span class="name truncate">{c.title}</span>

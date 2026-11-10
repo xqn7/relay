@@ -1,52 +1,55 @@
 <script lang="ts">
-  import { coverAt, proxiedCover } from "../api";
-  import { dominantColors, neutralColors, toneForBackdrop, type Rgb } from "./colors";
+  import { backgrounds } from "../stores/backgrounds.svelte";
+  import { settings, type BackgroundPlace } from "../stores/settings.svelte";
+  import BackgroundImage from "./BackgroundImage.svelte";
+  import { neutralColors, type Rgb } from "./colors";
+  import { coverColors, rgba } from "./extract";
 
-  // `full`: the colors fill the whole view (fullscreen player, idle screen) instead of
-  // melting into near-black below the top.
+  // `place`: where this backdrop is drawn; a custom background image can be limited to some
+  // places. The fullscreen player and the idle screen fill the whole view with color instead
+  // of melting into near-black below the top.
   // `colors` can be bound by views that draw in the cover's colors too (the visualizer).
-  let { cover, full = false, colors = $bindable(neutralColors()) }: { cover: string | null; full?: boolean; colors?: Rgb[] } = $props();
+  let {
+    cover,
+    place = "app",
+    colors = $bindable(neutralColors()),
+  }: { cover: string | null; place?: BackgroundPlace; colors?: Rgb[] } = $props();
+
+  const full = $derived(place !== "app");
+  const mode = $derived(settings.values.background);
+  const image = $derived(backgrounds.activeIn(place));
 
   // One set of blobs drifts forever; only their colors change. The colors are registered CSS
   // properties (see tokens.css), so the browser blends old → new smoothly with no flash and
   // without restarting the drift.
   let seq = 0;
 
-  async function extract(url: string): Promise<Rgb[]> {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.src = proxiedCover(coverAt(url, 120) ?? url);
-    await img.decode();
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 32;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-    ctx.drawImage(img, 0, 0, 32, 32);
-    return dominantColors(ctx.getImageData(0, 0, 32, 32).data, 3).map(toneForBackdrop);
-  }
-
   $effect(() => {
-    const url = cover;
+    // "Off" means no cover colors at all, so nothing is read from covers either.
+    const url = mode === "off" ? null : cover;
     const id = ++seq;
     // Ignore results for covers the user already moved past.
     const apply = (next: Rgb[]) => id === seq && (colors = next);
     if (!url) apply(neutralColors());
-    else extract(url).then(apply, () => apply(neutralColors()));
+    else coverColors(url).then(apply, () => apply(neutralColors()));
   });
-
-  const css = (c: Rgb | undefined, a: number) => (c ? `rgba(${c[0]},${c[1]},${c[2]},${a})` : "transparent");
 </script>
 
 <div
   class="backdrop"
   class:full
   aria-hidden="true"
-  style:--bd-1={css(colors[0], 0.9)}
-  style:--bd-2={css(colors[1] ?? colors[0], 0.75)}
-  style:--bd-3={css(colors[2] ?? colors[0], 0.6)}>
-  <div class="blob a"></div>
-  <div class="blob b"></div>
-  <div class="blob c"></div>
-  <div class="shade"></div>
+  style:--bd-1={rgba(colors[0], 0.9)}
+  style:--bd-2={rgba(colors[1] ?? colors[0], 0.75)}
+  style:--bd-3={rgba(colors[2] ?? colors[0], 0.6)}>
+  {#if image}
+    <BackgroundImage url={image.url} look={backgrounds.look(image)} {colors} />
+  {:else if mode !== "off"}
+    <div class="blob a"></div>
+    <div class="blob b"></div>
+    <div class="blob c"></div>
+    <div class="shade"></div>
+  {/if}
 </div>
 
 <style>

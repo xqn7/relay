@@ -171,7 +171,7 @@ async fn load(state: &AppState, url: &str) -> AppResult<(Arc<Vec<u8>>, String)> 
     fetch(state, url).await
 }
 
-fn respond(status: StatusCode, mime: &str, body: Vec<u8>) -> Response<Vec<u8>> {
+pub(crate) fn respond(status: StatusCode, mime: &str, body: Vec<u8>) -> Response<Vec<u8>> {
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, mime)

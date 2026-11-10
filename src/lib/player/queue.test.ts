@@ -120,3 +120,28 @@ describe("hidden songs", () => {
     expect(Q.nextIndex(q, true, hide("Song 5"))).toBe(null);
   });
 });
+
+describe("radio mode", () => {
+  it("turns repeat-all off and skips it while cycling", () => {
+    const q = Q.startRadio({ ...Q.playNow(Q.emptyQueue, tracks, 0), repeat: "all" }, "Song 1");
+    expect(q.radio).toBe("Song 1");
+    expect(q.repeat).toBe("off");
+    expect(Q.cycleRepeat("off", true)).toBe("one");
+    expect(Q.cycleRepeat("one", true)).toBe("off");
+    expect(Q.cycleRepeat("off")).toBe("all");
+  });
+
+  it("ends when another list starts playing", () => {
+    const q = Q.startRadio(Q.playNow(Q.emptyQueue, tracks, 0), "Song 1");
+    expect(Q.playNow(q, tracks, 2).radio).toBe(null);
+    expect(Q.addToQueue(q, [track(8)]).radio).toBe("Song 1");
+  });
+
+  it("survives a restart", () => {
+    const q = Q.startRadio(Q.playNow(Q.emptyQueue, tracks, 0), "Song 1");
+    const back = Q.restore(JSON.parse(JSON.stringify({ ...q, repeat: "all" })));
+    expect(back?.radio).toBe("Song 1");
+    expect(back?.repeat).toBe("off");
+    expect(Q.restore({ items: [], radio: 5 })?.radio).toBe(null);
+  });
+});

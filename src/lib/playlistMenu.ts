@@ -6,6 +6,8 @@ import { fail, library } from "./stores/library.svelte";
 import { menu, type MenuItem } from "./stores/menu.svelte";
 import { offline } from "./stores/offline.svelte";
 import { player } from "./stores/player.svelte";
+import { playlistPin } from "./pins";
+import { speedDial } from "./stores/speedDial.svelte";
 import { ui } from "./stores/ui.svelte";
 
 async function playPlaylist(id: string, shuffle: boolean): Promise<void> {
@@ -34,6 +36,7 @@ export function playlistMenuItems(p: PlaylistSummary): MenuItem[] {
   const items: MenuItem[] = [
     { label: t("menu.play"), icon: "play", disabled: p.count === 0, action: () => playPlaylist(p.id, false) },
     { label: t("playlist.shuffle"), icon: "shuffle", disabled: p.count === 0, action: () => playPlaylist(p.id, true) },
+    speedDial.menuItem(playlistPin(p)),
     {
       label: t("playlist.rename"),
       icon: "pencil",

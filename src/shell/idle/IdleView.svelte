@@ -39,7 +39,7 @@
 </script>
 
 <div class="idle" in:fade={{ duration: 700 }} out:fade={{ duration: 260 }}>
-  <Backdrop {cover} full />
+  <Backdrop {cover} place="idle" />
   <div class="clock">
     <div class="time">{time}</div>
     <div class="date">{date}</div>

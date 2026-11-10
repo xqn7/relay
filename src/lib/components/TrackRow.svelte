@@ -2,6 +2,7 @@
   import { formatTime, type Track } from "../api";
   import { t } from "../i18n/index.svelte";
   import { openArtist, playsFrom } from "../navigate";
+  import { history } from "../stores/history.svelte";
   import { library } from "../stores/library.svelte";
   import { offline } from "../stores/offline.svelte";
   import { player } from "../stores/player.svelte";
@@ -37,6 +38,7 @@
   const unmatched = $derived(track.via === "none");
   const unavailable = $derived(!offline.online && !offline.isAvailable(track));
   const downloaded = $derived(track.source !== "local" && offline.downloaded.has(track.id));
+  const plays = $derived(history.plays(track));
 
   function onKey(e: KeyboardEvent) {
     if (e.key === "Enter") onactivate();
@@ -83,6 +85,7 @@
   </div>
   {#if showAlbum}<span class="album truncate">{track.album?.name ?? ""}</span>{/if}
   <LikeButton {track} quiet />
+  <span class="plays" title={plays ? t("plays.count", { n: plays }) : undefined}>{plays || ""}</span>
   <span class="time">{track.durationMs ? formatTime(track.durationMs) : ""}</span>
   <button class="more" aria-label={t("menu.more")} onclick={(e) => (e.stopPropagation(), onmenu(e))}>
     <Icon name="more" size={18} />
@@ -92,7 +95,7 @@
 <style>
   .row {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
     align-items: center;
     gap: var(--s3);
     height: 58px;
@@ -105,7 +108,7 @@
     contain-intrinsic-size: auto 58px;
   }
   .row.with-album {
-    grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto;
+    grid-template-columns: auto minmax(0, 1.4fr) minmax(0, 1fr) auto auto auto auto;
   }
   .row:hover,
   .row:focus-visible {
@@ -176,6 +179,14 @@
     font-size: var(--fs-sm);
     color: var(--text-2);
   }
+  /* Play count: only the number, faint, so it reads as a column without adding noise. */
+  .plays {
+    min-width: 28px;
+    text-align: right;
+    font-size: var(--fs-sm);
+    color: var(--text-3);
+    font-variant-numeric: tabular-nums;
+  }
   .time {
     min-width: 38px;
     text-align: right;
@@ -240,7 +251,7 @@
   }
   @media (max-width: 1100px) {
     .row.with-album {
-      grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+      grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
     }
     .album {
       display: none;

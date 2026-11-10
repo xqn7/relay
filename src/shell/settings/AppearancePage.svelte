@@ -1,5 +1,5 @@
-<!-- Settings → Appearance: how lyrics look and translate, the up-next card and the idle screen.
-     Language, theme and visual quality join this page in later phases. -->
+<!-- Settings → Appearance: the background, how lyrics look and translate, the up-next card and
+     the idle screen. Language, theme and visual quality join this page in later phases. -->
 <script lang="ts">
   import { api, isAppError } from "../../lib/api";
   import Button from "../../lib/components/Button.svelte";
@@ -46,6 +46,26 @@
     if (v.translateLyrics) lyrics.translate();
   }
 </script>
+
+{#if visible("bg.mode", "bg.modeDesc") || visible("bg.mix", "bg.mixDesc")}
+  <h3>{t("settings.section.background")}</h3>
+  <div class="card">
+    <SettingRow label={t("bg.mode")} desc={t("bg.modeDesc")}>
+      <Segmented
+        label={t("bg.mode")}
+        value={v.background}
+        options={[
+          { value: "cover", label: t("bg.cover") },
+          { value: "image", label: t("bg.image") },
+          { value: "off", label: t("bg.off") },
+        ]}
+        onchange={(x) => settings.set("background", x)} />
+    </SettingRow>
+    {#if v.background === "image"}
+      {#await import("./BackgroundEditor.svelte") then m}<m.default />{/await}
+    {/if}
+  </div>
+{/if}
 
 {#if visible("settings.lyricsStyle", "settings.lyricsStyleDesc") || visible("settings.translateTo", "settings.translateToDesc") || visible("settings.deepl", "settings.deeplDesc")}
   <h3>{t("settings.section.lyrics")}</h3>

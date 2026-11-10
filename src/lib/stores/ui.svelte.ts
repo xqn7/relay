@@ -1,7 +1,7 @@
 // Navigation, overlays and toasts.
-import type { IconName } from "../icons";
-
 import type { SearchSource } from "../api";
+import type { Rgb } from "../backdrop/colors";
+import type { IconName } from "../icons";
 
 export type Route =
   | { name: "home" }
@@ -13,7 +13,18 @@ export type Route =
   | { name: "folder"; id: string }
   | { name: "trash" }
   | { name: "album"; source: SearchSource; id: string }
-  | { name: "artist"; source: SearchSource; id: string; artistName: string };
+  | { name: "artist"; source: SearchSource; id: string; artistName: string }
+  | { name: "discover" }
+  | { name: "mix"; number: number }
+  | { name: "profile" };
+
+/** A Wrapped recap: plays in [from, to) (Unix seconds), named like "November 2026". */
+export interface WrappedPeriod {
+  kind: "month" | "year";
+  from: number;
+  to: number;
+  label: string;
+}
 
 export type LibraryTab = "all" | "playlists" | "artists";
 
@@ -49,6 +60,10 @@ class UiStore {
   filesOver = $state(false);
   /** Art of the open artist/album page; the backdrop takes its colors while it's open. */
   heroCover = $state<string | null>(null);
+  /** The colors the app backdrop currently shows (previews and Wrapped use them too). */
+  coverColors = $state.raw<Rgb[]>([]);
+  /** The Wrapped cards, while they're open. */
+  wrapped = $state<WrappedPeriod | null>(null);
   toasts = $state<Toast[]>([]);
 
   get entry(): Entry {
@@ -105,6 +120,7 @@ class UiStore {
     this.stack = [{ route: { name: "home" }, key: nextId++, scroll: 0 }];
     this.pos = 0;
     this.searchOpen = this.settingsOpen = this.queueOpen = this.fullscreenOpen = false;
+    this.wrapped = null;
   }
 
   toast(text: string, icon?: IconName, action?: Toast["action"]): number {

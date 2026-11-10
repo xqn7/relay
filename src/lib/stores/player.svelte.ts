@@ -4,8 +4,10 @@ import { listen } from "@tauri-apps/api/event";
 import { api, artistLine, formatTime, IMPORT_ONLY, isAppError, type Prepared, type Track, type Trim } from "../api";
 import { AudioEngine, type Jump } from "../audio/engine";
 import { t } from "../i18n/index.svelte";
+import { PlayCounter } from "../player/playCount";
 import * as Q from "../player/queue";
 import { dialogs } from "./dialogs.svelte";
+import { history } from "./history.svelte";
 import { library } from "./library.svelte";
 import { offline } from "./offline.svelte";
 import { settings } from "./settings.svelte";
@@ -18,6 +20,8 @@ const RESTART_THRESHOLD_MS = 3_000;
 const SOURCE_TOAST_COOLDOWN_MS = 60_000;
 const AUTOPLAY_BATCH = 10;
 const RADIO_BATCH = 25;
+/** Radio refills when fewer songs than this are left. */
+const RADIO_REFILL_AT = 5;
 /** Imported songs this far ahead get matched before they are reached. */
 const PREMATCH_AHEAD = 3;
 /** After this many songs in a row fail, stop instead of racing through the whole queue. */
@@ -74,6 +78,10 @@ class Player {
   private sourceToastAt = new Map<string, number>();
   private autoplayBusy = false;
   private failsInARow = 0;
+  /** Counts the current playback as a play once it's been listened to long enough. */
+  private counter = new PlayCounter();
+  /** The recorded play of the current playback, updated with how long it was listened to. */
+  private playId: string | null = null;
 
   constructor() {
     this.engine = new AudioEngine({
@@ -185,15 +193,32 @@ class Player {
     if (playlistId) api.playlistPlayed(playlistId).catch(() => {});
   }
 
-  /** Plays the song, then fills the queue with similar songs. */
+  /** Plays the song, then keeps the queue filled with similar songs (radio mode). */
   async startRadio(track: Track): Promise<void> {
     this.playTracks([track]);
+    this.setQueue(Q.startRadio(this.queue, track.title));
+    const uid = this.current?.uid;
+    if (await this.refillRadio()) {
+      if (this.current?.uid === uid) ui.toast(t("toast.radioStarted", { title: track.title }), "radio");
+    } else ui.toast(t("toast.autoplayFailed"), "alert");
+  }
+
+  /** Adds similar songs to the current song's radio. False when none could be found. */
+  private async refillRadio(): Promise<boolean> {
+    const seed = this.current?.track;
+    if (!seed || !this.queue.radio || this.autoplayBusy) return false;
+    this.autoplayBusy = true;
     try {
-      const similar = (await api.autoplayTracks(track)).filter((x) => x.id !== track.id && !library.isHidden(x)).slice(0, RADIO_BATCH);
-      if (this.current?.track.id === track.id) this.setQueue(Q.addToQueue(this.queue, similar));
-      ui.toast(t("toast.radioStarted", { title: track.title }), "radio");
+      const known = new Set(this.queue.items.map((i) => i.track.id));
+      const found = (await api.autoplayTracks(seed)).filter((x) => !known.has(x.id) && !library.isHidden(x)).slice(0, RADIO_BATCH);
+      // The user may have started something else meanwhile.
+      if (!this.queue.radio || this.current?.track.id !== seed.id || found.length === 0) return found.length > 0;
+      this.setQueue(Q.addToQueue(this.queue, found));
+      return true;
     } catch {
-      ui.toast(t("toast.autoplayFailed"), "alert");
+      return false;
+    } finally {
+      this.autoplayBusy = false;
     }
   }
 
@@ -243,7 +268,7 @@ class Player {
   }
 
   cycleRepeat(): void {
-    this.setQueue({ ...this.queue, repeat: Q.cycleRepeat(this.queue.repeat) });
+    this.setQueue({ ...this.queue, repeat: Q.cycleRepeat(this.queue.repeat, !!this.queue.radio) });
   }
 
   /** Every queue change goes through here: it saves, and drops a preload that no longer fits. */
@@ -270,6 +295,28 @@ class Player {
   async pause(): Promise<void> {
     await this.engine.pause();
     this.saveNow().catch(() => {});
+  }
+
+  // ---- play counts ---------------------------------------------------------------------
+
+  /** A new playback of `item` starts: the previous one's listening time is saved first. */
+  private beginCount(item: Q.QueueItem): void {
+    this.flushListened();
+    this.playId = null;
+    this.counter.start(item.uid);
+  }
+
+  private async recordPlay(item: Q.QueueItem): Promise<void> {
+    try {
+      const id = await history.record(item.track, this.counter.listenedMs);
+      if (id && this.counter.key === item.uid) this.playId = id;
+    } catch (e) {
+      console.error("recording the play failed", e);
+    }
+  }
+
+  private flushListened(): void {
+    if (this.playId) api.playListened(this.playId, this.counter.listenedMs).catch(() => {});
   }
 
   toggle(): void {
@@ -337,6 +384,7 @@ class Player {
     if (!item) return;
     this.loading = autoplay;
     this.via = null;
+    this.beginCount(item);
     this.resetSongTools();
     const trim = trimOf(item.track);
     if (startMs === 0 && trim) startMs = trim.startMs;
@@ -411,6 +459,7 @@ class Player {
     if (next && next.uid !== this.current?.uid) api.prefetchTrack(next.track, settings.values.quality).catch(() => {});
     const imported = this.upcoming.slice(0, PREMATCH_AHEAD).map((x) => x.track).filter((x) => IMPORT_ONLY.has(x.source) && !x.via);
     if (imported.length) api.prematch(imported).catch(() => {});
+    if (this.queue.radio && this.upcoming.length < RADIO_REFILL_AT && offline.online) this.refillRadio();
   }
 
   /** Passed over when the queue moves on by itself: hidden songs, and while offline, songs
@@ -424,8 +473,7 @@ class Player {
 
   private async preloadNext(): Promise<void> {
     let i = Q.nextIndex(this.queue, true, this.skipItem);
-    if (i == null && settings.values.autoplay && this.queue.repeat === "off" && offline.online) {
-      await this.extendWithAutoplay();
+    if (i == null && (await this.extendQueue())) {
       i = Q.nextIndex(this.queue, true, this.skipItem);
     }
     if (i == null) return;
@@ -442,6 +490,13 @@ class Player {
     } catch {
       // Resolved again (with a visible error) when the song actually starts.
     }
+  }
+
+  /** The queue ran out: radio refills itself, otherwise autoplay adds similar songs if on. */
+  private async extendQueue(): Promise<boolean> {
+    if (!offline.online) return false;
+    if (this.queue.radio) return this.refillRadio();
+    return settings.values.autoplay && this.queue.repeat === "off" && this.extendWithAutoplay();
   }
 
   private async extendWithAutoplay(): Promise<boolean> {
@@ -470,6 +525,8 @@ class Player {
     if (this.loadedUid !== this.current?.uid) return;
     this.positionMs = pos;
     if (dur > 0) this.durationMs = dur;
+    const item = this.current;
+    if (item && this.playing && this.counter.tick(item.uid, pos, this.durationMs)) this.recordPlay(item);
     if (this.previewUntilMs != null && this.playing && pos >= this.previewUntilMs) {
       this.previewUntilMs = null;
       this.pause();
@@ -492,6 +549,7 @@ class Player {
     this.loadedUid = item.uid;
     this.loadToken++;
     this.via = this.preloadedVia;
+    this.beginCount(item);
     this.resetSongTools();
     this.loadSkipSections(item, this.preloadedVia);
     this.positionMs = trimOf(item.track)?.startMs ?? 0;
@@ -504,7 +562,7 @@ class Player {
 
   private async onEnded(): Promise<void> {
     let i = Q.nextIndex(this.queue, true, this.skipItem);
-    if (i == null && settings.values.autoplay && this.queue.repeat === "off" && offline.online && (await this.extendWithAutoplay())) {
+    if (i == null && (await this.extendQueue())) {
       i = Q.nextIndex(this.queue, true, this.skipItem);
     }
     if (i == null) {
@@ -690,6 +748,7 @@ class Player {
 
   async saveNow(): Promise<void> {
     clearTimeout(this.saveTimer);
+    this.flushListened();
     const saved: Saved = { ...this.queue, positionMs: Math.round(this.positionMs), volume: this.volume, muted: this.muted };
     await api.queueSave($state.snapshot(saved));
   }

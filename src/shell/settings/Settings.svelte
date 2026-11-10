@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fade, scale } from "svelte/transition";
+  import Avatar from "../../lib/components/Avatar.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import IconButton from "../../lib/components/IconButton.svelte";
   import type { Key } from "../../lib/i18n/en";
@@ -30,6 +31,11 @@
     if (q && shown.length && !shown.some((p) => p.id === page)) page = shown[0].id;
   });
 
+  function openProfile() {
+    ui.settingsOpen = false;
+    ui.open({ name: "profile" });
+  }
+
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape") ui.settingsOpen = false;
   }
@@ -57,11 +63,13 @@
     </nav>
     {#if session.account}
       <div class="profile">
-        <div class="avatar">{session.account.displayName.slice(0, 1).toUpperCase()}</div>
-        <div class="who">
-          <div class="name truncate">{session.account.displayName}</div>
-          <div class="email truncate">{session.account.email}</div>
-        </div>
+        <button class="who" title={t("profile.open")} onclick={openProfile}>
+          <Avatar src={session.account.avatar} name={session.account.displayName} size={32} />
+          <span class="names">
+            <span class="name truncate">{session.account.displayName}</span>
+            <span class="email truncate">{session.account.email}</span>
+          </span>
+        </button>
         <IconButton icon="logout" label={t("settings.signOut")} onclick={onSignOut} />
       </div>
     {/if}
@@ -192,19 +200,24 @@
     border-radius: var(--r-lg);
     background: rgba(255, 255, 255, 0.06);
   }
-  .avatar {
-    display: grid;
-    place-items: center;
-    flex: none;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.14);
-    font-weight: 700;
-    font-size: var(--fs-sm);
-  }
   .who {
     flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: -4px;
+    padding: 4px;
+    border: 0;
+    border-radius: var(--r-md);
+    background: none;
+    text-align: left;
+  }
+  .who:hover {
+    background: var(--hover);
+  }
+  .names {
+    display: grid;
     min-width: 0;
   }
   .name {

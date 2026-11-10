@@ -33,6 +33,8 @@
       <ConnectionDialog />
     {:else if d.kind === "versions"}
       <VersionsDialog track={d.track} playlist={d.playlist} />
+    {:else if d.kind === "crop"}
+      {#await import("./CropDialog.svelte") then m}<m.default {d} />{/await}
     {/if}
   {/key}
 {/if}

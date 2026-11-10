@@ -17,6 +17,20 @@ pub struct Account {
     pub id: String,
     pub email: String,
     pub display_name: String,
+    /// Profile picture and banner, as app URLs.
+    pub avatar: Option<String>,
+    pub banner: Option<String>,
+}
+
+const ACCOUNT_COLS: &str = "id,email,display_name,avatar_path,banner_path";
+
+fn account_row(r: &rusqlite::Row) -> rusqlite::Result<Account> {
+    let url = |file: Option<String>| file.map(|f| crate::profile::file_url(&f));
+    Ok(Account { id: r.get(0)?, email: r.get(1)?, display_name: r.get(2)?, avatar: url(r.get(3)?), banner: url(r.get(4)?) })
+}
+
+pub fn by_id(db: &Db, id: &str) -> AppResult<Option<Account>> {
+    db.with(|c| c.query_row(&format!("SELECT {ACCOUNT_COLS} FROM accounts WHERE id=?1"), [id], account_row).optional())
 }
 
 #[derive(Debug, Serialize)]
@@ -87,6 +101,8 @@ pub fn create(db: &Db, email: &str, password: &str, keep_signed_in: bool) -> App
         id: uuid_v4(),
         display_name: email.split('@').next().unwrap_or(&email).to_string(),
         email,
+        avatar: None,
+        banner: None,
     };
     let (pw_hash, rk_hash) = (hash(password)?, hash(&normalize_recovery_key(&recovery_key))?);
     let now = now_secs();
@@ -105,9 +121,9 @@ pub fn sign_in(db: &Db, email: &str, password: &str, keep_signed_in: bool) -> Ap
     let email = normalize_email(email);
     let row: Option<(Account, String)> = db.with(|c| {
         c.query_row(
-            "SELECT id,email,display_name,password_hash FROM accounts WHERE email=?1",
+            &format!("SELECT {ACCOUNT_COLS},password_hash FROM accounts WHERE email=?1"),
             [&email],
-            |r| Ok((Account { id: r.get(0)?, email: r.get(1)?, display_name: r.get(2)? }, r.get(3)?)),
+            |r| Ok((account_row(r)?, r.get(5)?)),
         )
         .optional()
     })?;
@@ -126,9 +142,9 @@ pub fn reset_password(db: &Db, email: &str, recovery_key: &str, new_password: &s
     validate_password(new_password)?;
     let row: Option<(Account, String)> = db.with(|c| {
         c.query_row(
-            "SELECT id,email,display_name,recovery_hash FROM accounts WHERE email=?1",
+            &format!("SELECT {ACCOUNT_COLS},recovery_hash FROM accounts WHERE email=?1"),
             [&email],
-            |r| Ok((Account { id: r.get(0)?, email: r.get(1)?, display_name: r.get(2)? }, r.get(3)?)),
+            |r| Ok((account_row(r)?, r.get(5)?)),
         )
         .optional()
     })?;
@@ -161,12 +177,7 @@ fn remember(db: &Db, account: &Account, keep: bool) -> AppResult<()> {
 
 pub fn remembered(db: &Db) -> AppResult<Option<Account>> {
     let Some(id) = db.device_get(SIGNED_IN_KEY)? else { return Ok(None) };
-    db.with(|c| {
-        c.query_row("SELECT id,email,display_name FROM accounts WHERE id=?1", [&id], |r| {
-            Ok(Account { id: r.get(0)?, email: r.get(1)?, display_name: r.get(2)? })
-        })
-        .optional()
-    })
+    by_id(db, &id)
 }
 
 pub fn sign_out(db: &Db) -> AppResult<()> {

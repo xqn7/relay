@@ -67,6 +67,8 @@ pub async fn reset_password(state: St<'_>, email: String, recovery_key: String, 
 pub fn sign_out(state: St) -> AppResult<()> {
     accounts::sign_out(&state.db)?;
     state.media.clear();
+    // The next person to sign in starts with a normal session.
+    state.private.store(false, std::sync::atomic::Ordering::Relaxed);
     set_current(&state, None);
     Ok(())
 }
@@ -164,7 +166,8 @@ pub fn search_history(state: St) -> AppResult<Vec<String>> {
 pub fn search_history_add(state: St, query: String) -> AppResult<()> {
     let account = current(&state)?;
     let query = query.trim();
-    if query.is_empty() || query.chars().count() > 200 {
+    // A private session leaves no trace, searches included.
+    if query.is_empty() || query.chars().count() > 200 || state.private.load(std::sync::atomic::Ordering::Relaxed) {
         return Ok(());
     }
     let now = crate::util::now_millis();
@@ -197,22 +200,14 @@ pub async fn collection_tracks(state: St<'_>, source: String, kind: String, id: 
     }
 }
 
-/// Similar songs to continue with when the queue runs out. SoundCloud songs borrow the radio
-/// of their closest YouTube Music match, since SoundCloud has no comparable feature.
+/// Similar songs to continue with when the queue runs out, and for radio.
 #[tauri::command]
 pub async fn autoplay_tracks(state: St<'_>, track: Track) -> AppResult<Vec<Track>> {
     if !track.is_sane() {
         return Err(AppError::new("invalid_input", "bad track"));
     }
-    let seed = if track.source == YOUTUBE {
-        track.source_id.clone()
-    } else {
-        let query = format!("{} {}", track.artist_line(), crate::matcher::clean_title(&track.title));
-        let found = state.yt.search(&query, SearchKind::Songs).await?;
-        found.tracks.first().map(|t| t.source_id.clone()).ok_or_else(|| AppError::new("no_match", "no seed song"))?
-    };
     let hidden = crate::library::hidden(&state.db, &current(&state)?.id)?;
-    let mut tracks = state.yt.radio(&seed).await?;
+    let mut tracks = crate::mixes::radio_for(&state, &track).await?;
     tracks.retain(|t| !crate::library::is_hidden(&hidden, t));
     Ok(tracks)
 }

@@ -18,9 +18,12 @@ export interface QueueState {
   repeat: Repeat;
   /** Order (uids) before shuffle was turned on, to restore it afterwards. */
   unshuffled: string[] | null;
+  /** Radio mode: the title of the song it started from. The queue refills itself and
+   * repeat-all is off. */
+  radio: string | null;
 }
 
-export const emptyQueue: QueueState = { items: [], index: -1, shuffle: false, repeat: "off", unshuffled: null };
+export const emptyQueue: QueueState = { items: [], index: -1, shuffle: false, repeat: "off", unshuffled: null, radio: null };
 
 let counter = 0;
 export function makeItem(track: Track): QueueItem {
@@ -45,14 +48,20 @@ function shuffled<T>(list: T[], random: () => number): T[] {
   return out;
 }
 
-/** Replaces the queue with `tracks`, starting at `start`. With shuffle on, the rest is shuffled. */
+/** Replaces the queue with `tracks`, starting at `start`. With shuffle on, the rest is shuffled.
+ * A new queue ends radio mode. */
 export function playNow(q: QueueState, tracks: Track[], start = 0, random = Math.random): QueueState {
   if (tracks.length === 0) return q;
   const items = tracks.map(makeItem);
   const first = items[Math.min(Math.max(start, 0), items.length - 1)];
-  if (!q.shuffle) return { ...q, items, index: items.indexOf(first), unshuffled: null };
+  if (!q.shuffle) return { ...q, items, index: items.indexOf(first), unshuffled: null, radio: null };
   const rest = shuffled(items.filter((i) => i !== first), random);
-  return { ...q, items: [first, ...rest], index: 0, unshuffled: items.map((i) => i.uid) };
+  return { ...q, items: [first, ...rest], index: 0, unshuffled: items.map((i) => i.uid), radio: null };
+}
+
+/** Starts radio mode from the current song: repeat-all would loop a list meant to go on and on. */
+export function startRadio(q: QueueState, seedTitle: string): QueueState {
+  return { ...q, radio: seedTitle, repeat: q.repeat === "all" ? "off" : q.repeat };
 }
 
 export function playNext(q: QueueState, tracks: Track[]): QueueState {
@@ -121,8 +130,9 @@ export function setShuffle(q: QueueState, on: boolean, random = Math.random): Qu
   return { ...q, shuffle: false, items, index: now ? items.indexOf(now) : q.index, unshuffled: null };
 }
 
-export function cycleRepeat(r: Repeat): Repeat {
-  return r === "off" ? "all" : r === "all" ? "one" : "off";
+/** Off → all → one → off; in radio mode "all" is skipped. */
+export function cycleRepeat(r: Repeat, radio = false): Repeat {
+  return r === "off" ? (radio ? "one" : "all") : r === "all" ? "one" : "off";
 }
 
 /**
@@ -156,5 +166,6 @@ export function restore(raw: unknown): QueueState | null {
   const index = typeof r.index === "number" && r.index >= 0 && r.index < items.length ? r.index : items.length ? 0 : -1;
   const repeat: Repeat = r.repeat === "all" || r.repeat === "one" ? r.repeat : "off";
   const unshuffled = Array.isArray(r.unshuffled) ? r.unshuffled.filter((u): u is string => typeof u === "string") : null;
-  return { items, index, shuffle: r.shuffle === true, repeat, unshuffled: r.shuffle === true ? unshuffled : null };
+  const radio = typeof r.radio === "string" && r.radio.length < 1024 ? r.radio : null;
+  return { items, index, shuffle: r.shuffle === true, repeat: radio && repeat === "all" ? "off" : repeat, unshuffled: r.shuffle === true ? unshuffled : null, radio };
 }

@@ -220,6 +220,45 @@ CREATE TABLE waveforms(
     peaks BLOB NOT NULL,
     created_at INTEGER NOT NULL
 );
+"#, r#"
+CREATE TABLE plays(
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    track_id TEXT NOT NULL,
+    played_at INTEGER NOT NULL,
+    ms_listened INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX plays_account_time ON plays(account_id, played_at);
+CREATE INDEX plays_account_track ON plays(account_id, track_id);
+CREATE TABLE speed_dial(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL,
+    source TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    subtitle TEXT NOT NULL,
+    cover TEXT,
+    position INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, kind, source, item_id)
+);
+CREATE TABLE mixes(
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    day TEXT NOT NULL,
+    data TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY(account_id)
+);
+CREATE TABLE backgrounds(
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    file TEXT NOT NULL,
+    look TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
 "#];
 
 impl Db {

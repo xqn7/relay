@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flip } from "svelte/animate";
+  import { spring } from "../motion";
   import { api, type Track } from "../api";
   import { t } from "../i18n/index.svelte";
   import { dnd, dropTarget, type Payload } from "../stores/dnd.svelte";
@@ -220,15 +221,6 @@
   {/if}
   {#if insertAt >= 0}<div class="line" style:top="{lineTop - 1}px"></div>{/if}
 </div>
-
-<script lang="ts" module>
-  /** A soft spring: overshoots slightly, then settles (same curve as the queue panel). */
-  function spring(x: number): number {
-    const s = 0.9;
-    const t = x - 1;
-    return t * t * ((s + 1) * t + s) + 1;
-  }
-</script>
 
 <style>
   .list {
