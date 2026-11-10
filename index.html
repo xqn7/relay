@@ -14,10 +14,15 @@
         background: #0a0a0b; transition: opacity 220ms cubic-bezier(.2,.8,.2,1);
       }
       #splash.done { opacity: 0; pointer-events: none; }
-      #splash svg { width: 88px; height: 88px; overflow: visible; }
-      #splash .sun { transform: translateY(26px); animation: rise 760ms cubic-bezier(.2,.8,.2,1) forwards; }
-      #splash .l1, #splash .l2 { transform-origin: 50px 0; transform: scaleX(.4); opacity: 0; animation: grow 520ms cubic-bezier(.2,.8,.2,1) forwards; }
-      #splash .l2 { animation-delay: 90ms; }
+      /* The logo only appears (class "show", added by main.ts) when loading takes long enough
+         to notice; a fast start goes straight from dark to the app. */
+      #splash svg { width: 88px; height: 88px; overflow: visible; opacity: 0; }
+      #splash.show svg { opacity: 1; transition: opacity 160ms cubic-bezier(.2,.8,.2,1); }
+      #splash .sun { transform: translateY(26px); }
+      #splash .l1, #splash .l2 { transform-origin: 50px 0; transform: scaleX(.4); opacity: 0; }
+      #splash.show .sun { animation: rise 760ms cubic-bezier(.2,.8,.2,1) forwards; }
+      #splash.show .l1, #splash.show .l2 { animation: grow 520ms cubic-bezier(.2,.8,.2,1) forwards; }
+      #splash.show .l2 { animation-delay: 90ms; }
       @keyframes rise { to { transform: translateY(0); } }
       @keyframes grow { to { transform: scaleX(1); opacity: 1; } }
     </style>

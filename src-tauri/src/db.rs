@@ -9,6 +9,26 @@ use std::sync::Mutex;
 /// keeps things simple and avoids cross-connection locking surprises.
 pub struct Db(Mutex<Connection>);
 
+#[cfg(debug_assertions)]
+mod reentry {
+    use std::cell::Cell;
+
+    thread_local!(static INSIDE: Cell<bool> = const { Cell::new(false) });
+
+    pub struct Guard;
+
+    pub fn enter() -> Guard {
+        assert!(!INSIDE.replace(true), "Db::with called from inside Db::with (would deadlock)");
+        Guard
+    }
+
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            INSIDE.set(false);
+        }
+    }
+}
+
 /// Each entry upgrades the schema by one version. Never edit a shipped entry; append a new one.
 const MIGRATIONS: &[&str] = &[r#"
 CREATE TABLE accounts(
@@ -211,6 +231,10 @@ impl Db {
     /// Runs `f` with the connection. A poisoned lock only means another thread panicked
     /// mid-query; SQLite itself stays consistent, so we keep going.
     pub fn with<T>(&self, f: impl FnOnce(&Connection) -> rusqlite::Result<T>) -> AppResult<T> {
+        // The lock isn't reentrant: calling back into the Db from inside `f` hangs the app for
+        // good, so debug builds and tests fail loudly instead.
+        #[cfg(debug_assertions)]
+        let _guard = reentry::enter();
         let conn = self.0.lock().unwrap_or_else(|p| p.into_inner());
         Ok(f(&conn)?)
     }
@@ -273,4 +297,23 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch(&format!("BEGIN; {sql}; PRAGMA user_version={}; COMMIT;", i + 1))?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Db;
+
+    #[test]
+    #[should_panic(expected = "would deadlock")]
+    fn nested_use_fails_loudly_instead_of_hanging() {
+        let db = Db::in_memory();
+        let _ = db.with(|_| Ok(db.pref::<bool>("x")));
+    }
+
+    #[test]
+    fn lock_is_usable_again_after_a_call() {
+        let db = Db::in_memory();
+        db.device_set("a", "1").unwrap();
+        assert_eq!(db.device_get("a").unwrap().as_deref(), Some("1"));
+    }
 }

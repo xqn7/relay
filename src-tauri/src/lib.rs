@@ -89,6 +89,14 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,HardwareMediaKeyHandling,MediaSessionService",
         )
         .on_navigation(is_app_url)
+        // Hidden until the page is there: a new WebView2 paints one white frame before its
+        // background color applies, which flashes on screen at startup.
+        .visible(false)
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                let _ = window.show();
+            }
+        })
         .build()?;
 
     let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);

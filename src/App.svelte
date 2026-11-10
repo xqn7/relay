@@ -40,9 +40,15 @@
     session.account = null;
   }
 
+  /** Started in main.ts; shows the logo if loading takes a while. */
+  let { splashTimer }: { splashTimer: number } = $props();
+
   function hideSplash() {
+    clearTimeout(splashTimer);
     const el = document.getElementById("splash");
     if (!el) return;
+    // A logo that never showed goes at once; a shown one fades out.
+    if (!el.classList.contains("show")) return el.remove();
     el.classList.add("done");
     setTimeout(() => el.remove(), 260);
   }

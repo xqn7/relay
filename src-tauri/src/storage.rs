@@ -262,7 +262,10 @@ pub fn on_disk(state: &AppState, track_id: &str) -> AppResult<Option<OnDisk>> {
 /// Takes a finished download from the buffer folder into the cache, or into downloads when
 /// the song is saved for offline. Returns the file's new place.
 pub fn keep(state: &AppState, track_id: &str, from: &Path, played: &Track, stand_in: bool, mime: &str, loudness_db: Option<f32>) -> AppResult<PathBuf> {
-    let kind = if state.db.with(|c| is_wanted(c, track_id, liked_too(state)))? { DOWNLOAD } else { CACHE };
+    // Read before taking the connection: the setting lookup locks it too, and the lock isn't
+    // reentrant.
+    let liked = liked_too(state);
+    let kind = if state.db.with(|c| is_wanted(c, track_id, liked))? { DOWNLOAD } else { CACHE };
     let file = format!("{}.{}", file_stem(track_id), ext_for_mime(mime));
     let to = state.storage.dir(kind).join(&file);
     move_file(from, &to)?;
@@ -613,7 +616,8 @@ pub fn clear(state: &Arc<AppState>, account: &str, what: &str) -> AppResult<()> 
                 c.execute("DELETE FROM offline WHERE account_id=?1", [account])?;
                 c.execute("UPDATE playlists SET offline=0 WHERE account_id=?1", [account])
             })?;
-            let still: HashSet<String> = state.db.with(|c| wanted(c, liked_too(state)))?.into_iter().collect();
+            let liked = liked_too(state);
+            let still: HashSet<String> = state.db.with(|c| wanted(c, liked))?.into_iter().collect();
             let ids: Vec<String> = state.db.with(|c| {
                 let mut s = c.prepare("SELECT track_id FROM audio_files WHERE kind='download'")?;
                 let rows = s.query_map([], |r| r.get(0))?.collect();
