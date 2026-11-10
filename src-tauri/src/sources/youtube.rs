@@ -175,8 +175,6 @@ impl YouTube {
 }
 
 impl YouTube {
-    /// Song search on YouTube Music. With `videos`, searches music videos instead, which
-    /// the matcher only uses when no plain song matched.
     /// YouTube Music's own lyrics for a song (plain text, no timing), with the credit line
     /// YouTube shows under them. Ok(None) when YouTube has no lyrics for it.
     pub async fn lyrics(&self, video_id: &str) -> AppResult<Option<(String, String)>> {
@@ -190,6 +188,8 @@ impl YouTube {
         }
     }
 
+    /// Song search on YouTube Music. With `videos`, searches music videos instead, which
+    /// the matcher only uses when no plain song matched.
     pub async fn search_songs(&self, query: &str, videos: bool) -> AppResult<Vec<Track>> {
         let q = self.rp.query();
         let items = if videos {

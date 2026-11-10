@@ -11,7 +11,7 @@ use crate::AppState;
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::http::{header, Request, Response, StatusCode};
@@ -145,8 +145,12 @@ impl Streams {
         }
     }
 
+    /// Every buffer gets its own file: when a buffer replaces an older one for the same song,
+    /// dropping the old one must not delete the file the new one is writing.
     fn file_for(&self, track_id: &str) -> PathBuf {
-        self.dir.join(format!("{}.part", crate::storage::file_stem(track_id)))
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        self.dir.join(format!("{}-{n}.part", crate::storage::file_stem(track_id)))
     }
 
     fn insert(&self, track_id: String, buf: Arc<Buffer>) {
@@ -210,6 +214,14 @@ pub async fn prepare(state: &Arc<AppState>, track: &Track, quality: Quality, ret
             return Err(e);
         }
     };
+    // The prefetch and a click can prepare the same song at once; whoever finishes second
+    // uses the buffer that's already filling instead of downloading the song twice.
+    if !retry {
+        if let Some(buf) = state.streams.get(&track.id).filter(|b| b.usable()) {
+            buf.touch();
+            return Ok(buf);
+        }
+    }
     Ok(start_buffer(state, &track.id, resolution, quality))
 }
 

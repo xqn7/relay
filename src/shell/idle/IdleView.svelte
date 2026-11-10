@@ -23,7 +23,7 @@
   const progress = $derived(player.durationMs > 0 ? Math.min(1, player.positionMs / player.durationMs) : 0);
 
   let now = $state(new Date());
-  const time = $derived(new Intl.DateTimeFormat(i18n.lang, { hour: "2-digit", minute: "2-digit" }).format(now));
+  const time = $derived(new Intl.DateTimeFormat(i18n.lang, { hour: "numeric", minute: "2-digit" }).format(now));
   const date = $derived(new Intl.DateTimeFormat(i18n.lang, { weekday: "long", day: "numeric", month: "long" }).format(now));
 
   // The clock wakes once a minute, right when the minute changes.

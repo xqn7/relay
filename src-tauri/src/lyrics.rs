@@ -278,8 +278,11 @@ async fn look_up(state: &AppState, track: &Track) -> AppResult<Option<Lyrics>> {
     match (lrclib, youtube(state, track).await) {
         (_, Ok(Some(found))) => Ok(Some(found)),
         (Ok(_), Ok(None)) => Ok(None),
+        // YouTube answered, so the internet works and it's LRCLIB that failed: say so instead
+        // of passing on its connection error, which would read as "you're offline".
+        (Err(e), Ok(None)) => Err(AppError::new("source_failed", format!("LRCLIB: {e}"))),
         // "Nothing found" is only remembered when both services really answered.
-        (Err(e), _) | (_, Err(e)) => Err(e),
+        (_, Err(e)) => Err(e),
     }
 }
 

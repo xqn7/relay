@@ -458,9 +458,34 @@ pub fn merge(db: &Db, account: &str, a: &str, b: &str, into: Option<&str>, new_n
         (None, Some(name)) => create_playlist(db, account, name, None)?,
         _ => return Err(AppError::new("invalid_input", "merge needs a target")),
     };
-    let all: Vec<Track> = ta.into_iter().chain(tb).collect();
+    // A song imported from two services is one song: compare what each track plays as.
+    let mut seen = HashSet::new();
+    let existing = if target == a { ta.clone() } else if target == b { tb.clone() } else { Vec::new() };
+    let all: Vec<Track> = db.with(|c| {
+        for t in &existing {
+            seen.insert(plays_as(c, t)?);
+        }
+        let mut fresh = Vec::new();
+        for t in ta.into_iter().chain(tb) {
+            if seen.insert(plays_as(c, &t)?) {
+                fresh.push(t);
+            }
+        }
+        Ok(fresh)
+    })?;
     add_tracks(db, account, &target, &all)?;
     Ok(target)
+}
+
+/// The song a track actually plays: an imported song counts as its saved match.
+fn plays_as(c: &Connection, t: &Track) -> rusqlite::Result<String> {
+    if !is_import_only(&t.source) {
+        return Ok(t.id.clone());
+    }
+    let matched: Option<Option<String>> = c
+        .query_row("SELECT track_id FROM matches WHERE source=?1 AND source_id=?2", params![t.source, t.source_id], |r| r.get(0))
+        .optional()?;
+    Ok(matched.flatten().unwrap_or_else(|| t.id.clone()))
 }
 
 // ---- folders --------------------------------------------------------------------------
@@ -646,7 +671,7 @@ pub fn trash(db: &Db, account: &str) -> AppResult<Vec<TrashEntry>> {
             let (id, name, at, n) = row?;
             out.push(TrashEntry { kind: "playlist".into(), id, name, detail: n.to_string(), deleted_at: at });
         }
-        let mut s = c.prepare("SELECT l.track_id, t.data, l.trashed_at FROM local_files l JOIN tracks t ON t.id=l.track_id WHERE l.trashed_at IS NOT NULL")?;
+        let mut s = c.prepare("SELECT l.track_id, t.data, l.trashed_at FROM local_files l JOIN tracks t ON t.id='local:'||l.track_id WHERE l.trashed_at IS NOT NULL")?;
         for row in s.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?)))? {
             let (id, data, at) = row?;
             if let Some(t) = track_from(&data) {
@@ -796,6 +821,37 @@ mod tests {
         assert_eq!(ids(&db, &a, &merged), vec!["1", "2", "3"]);
         merge(&db, &a, &p1, &p2, Some(&p2), None).unwrap();
         assert_eq!(ids(&db, &a, &p2), vec!["2", "3", "1"]);
+    }
+
+    #[test]
+    fn merge_counts_one_song_imported_from_two_services_once() {
+        let (db, a) = setup();
+        let yt = Track::imported("youtube", "abcdefghijk", "Song", vec!["Artist".into()], Some(180_000), None, None);
+        db.upsert_track(&yt).unwrap();
+        let from_spotify = track("1");
+        let from_apple = Track::imported("apple", "123", "Song", vec!["Artist".into()], Some(180_000), None, None);
+        set_match(&db, "spotify", &from_spotify.source_id, Some(&yt), false, 1.0).unwrap();
+        set_match(&db, "apple", "123", Some(&yt), false, 1.0).unwrap();
+        let p1 = create_playlist(&db, &a, "Spotify", None).unwrap();
+        let p2 = create_playlist(&db, &a, "Apple", None).unwrap();
+        add_tracks(&db, &a, &p1, &[from_spotify, track("2")]).unwrap();
+        add_tracks(&db, &a, &p2, &[from_apple]).unwrap();
+        let merged = merge(&db, &a, &p1, &p2, None, Some("Both")).unwrap();
+        assert_eq!(playlist_detail(&db, &a, &merged).unwrap().items.len(), 2);
+        merge(&db, &a, &p1, &p2, Some(&p1), None).unwrap();
+        assert_eq!(playlist_detail(&db, &a, &p1).unwrap().items.len(), 2);
+    }
+
+    #[test]
+    fn removed_local_songs_show_in_trash() {
+        let (db, a) = setup();
+        let song = Track::imported("local", "abc123", "Home recording", vec!["Me".into()], Some(60_000), None, None);
+        db.upsert_track(&song).unwrap();
+        db.with(|c| c.execute("INSERT INTO local_files(track_id,path,size,mtime,trashed_at,trash_path) VALUES('abc123','x.mp3',1,1,5,'t.mp3')", []))
+            .unwrap();
+        let entries = trash(&db, &a).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!((entries[0].kind.as_str(), entries[0].id.as_str(), entries[0].name.as_str()), ("local", "abc123", "Home recording"));
     }
 
     #[test]

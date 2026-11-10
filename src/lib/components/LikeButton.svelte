@@ -8,6 +8,11 @@
   const liked = $derived(library.liked.has(track.id));
   // Bumped on each like so the pop/burst animation restarts; unliking just empties the heart.
   let burst = $state(0);
+  // Long lists reuse rows for other songs; a burst belongs to the song that was liked.
+  $effect(() => {
+    void track.id;
+    burst = 0;
+  });
 
   function toggle(e: MouseEvent) {
     e.stopPropagation();

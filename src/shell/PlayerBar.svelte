@@ -58,7 +58,7 @@
               <div class="artist">
                 <SourceBadge source={player.via?.source ?? playsFrom(tr)} />
                 <span class="truncate">
-                  {#each tr.artists as a, i (i)}{#if i > 0}, {/if}<button class="artist-link" onclick={() => openArtist(a, tr.source)}>{a.name}</button>{/each}
+                  {#each tr.artists as a, i (i)}{#if i > 0}{", "}{/if}<button class="artist-link" onclick={() => openArtist(a, tr.source)}>{a.name}</button>{/each}
                 </span>
               </div>
             </div>

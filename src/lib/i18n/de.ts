@@ -115,6 +115,8 @@ export const de: Record<Key, string> = {
   "toast.skipped": "„{title}“ übersprungen. Der Song ließ sich nicht abspielen.",
   "toast.helperDownloading": "YouTube-Hilfsprogramm wird geladen ({pct} %)",
   "toast.helperReady": "YouTube-Hilfsprogramm ist bereit.",
+  "toast.ffmpegDownloading": "Video-Hilfsprogramm wird geladen ({pct} %)",
+  "toast.ffmpegReady": "Video-Hilfsprogramm ist bereit.",
   "toast.collectionFailed": "Die Liste konnte nicht geladen werden. Versuch es noch mal.",
   "toast.autoplayFailed": "Keine ähnlichen Songs zum Weiterspielen gefunden.",
 
@@ -580,6 +582,7 @@ export const de: Record<Key, string> = {
   "editor.textHint": "Füge den Songtext ein oder tippe ihn, eine Zeile pro Reihe. Wechsle dann zu Synchronisieren.",
   "editor.placeholder": "Songtext…",
   "editor.syncHint": "Spiel den Song ab und drück Enter (oder Tippen), genau wenn eine Zeile beginnt. Pfeil nach oben nimmt das letzte Tippen zurück.",
+  "editor.otherSong": "Gerade läuft ein anderer Song. Deine Zeilen und Zeiten bleiben und werden für „{title}“ gespeichert; spiel ihn nochmal ab, um weiter zu tippen.",
   "editor.noLines": "Füge zuerst Text hinzu.",
   "editor.playFrom": "Kurz vor dieser Zeile abspielen",
   "editor.earlier": "0,1 s früher",

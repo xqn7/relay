@@ -2,6 +2,7 @@
   import { flip } from "svelte/animate";
   import { fly } from "svelte/transition";
   import { artistLine } from "../lib/api";
+  import { playsFrom } from "../lib/navigate";
   import Button from "../lib/components/Button.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
@@ -81,7 +82,7 @@
         <Cover src={player.current.track.cover} size={40} />
         <div class="text">
           <div class="title truncate">{player.current.track.title}</div>
-          <div class="artist"><SourceBadge source={player.current.track.source} /><span class="truncate">{artistLine(player.current.track)}</span></div>
+          <div class="artist"><SourceBadge source={player.via?.source ?? playsFrom(player.current.track)} /><span class="truncate">{artistLine(player.current.track)}</span></div>
         </div>
       </div>
     {/if}
@@ -107,7 +108,7 @@
             <Cover src={item.track.cover} size={40} />
             <div class="text">
               <div class="title truncate">{item.track.title}</div>
-              <div class="artist"><SourceBadge source={item.track.source} /><span class="truncate">{artistLine(item.track)}</span></div>
+              <div class="artist"><SourceBadge source={playsFrom(item.track)} /><span class="truncate">{artistLine(item.track)}</span></div>
             </div>
             <button class="remove" aria-label={t("queue.remove")} onclick={() => player.remove(item.uid)}><Icon name="close" size={15} /></button>
           </div>

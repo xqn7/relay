@@ -79,7 +79,7 @@
             <div class="names" in:fly={{ y: 6, duration: 260, delay: 80 }} out:fade={{ duration: 120 }}>
               <h1 class="truncate">{tr.title}</h1>
               <p class="truncate">
-                {#each tr.artists as a, i (i)}{#if i > 0}, {/if}<button
+                {#each tr.artists as a, i (i)}{#if i > 0}{", "}{/if}<button
                     class="artist"
                     onclick={() => {
                       close();

@@ -439,6 +439,9 @@ class Player {
   // ---- engine events -------------------------------------------------------------------
 
   private onTime(pos: number, dur: number): void {
+    // While the next song is still loading, the old one keeps reporting its time; showing it
+    // under the new title would look like the new song started in the middle.
+    if (this.loadedUid !== this.current?.uid) return;
     this.positionMs = pos;
     if (dur > 0) this.durationMs = dur;
     const now = Date.now();

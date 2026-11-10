@@ -62,7 +62,7 @@
     icon="disc"
     chips={[{ text: `${t("library.songs", { n: album.tracks.length })} · ${formatLength(total, t("time.hourShort"))}`, icon: "music" }]}>
     {#snippet subtitle()}
-      {#each album!.artists as a, i (i)}{#if i > 0}, {/if}<button class="link" onclick={() => openArtist(a, source)}>{a.name}</button>{/each}{#if album!.year}<span> · {album!.year}</span>{/if}
+      {#each album!.artists as a, i (i)}{#if i > 0}{", "}{/if}<button class="link" onclick={() => openArtist(a, source)}>{a.name}</button>{/each}{#if album!.year}<span>{` · ${album!.year}`}</span>{/if}
     {/snippet}
     {#snippet actions()}
       <Button variant="primary" icon="play" disabled={!album!.tracks.length} onclick={() => play(false)}>{t("playlist.playAll")}</Button>

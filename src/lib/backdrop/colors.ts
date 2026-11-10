@@ -69,7 +69,8 @@ export function dominantColors(data: Uint8ClampedArray, count = 3): Rgb[] {
 /** Makes a cover color suitable for the backdrop. */
 export function toneForBackdrop(rgb: Rgb): Rgb {
   let [h, s, l] = rgbToHsl(rgb);
-  if (h >= 190 && h <= 300) s *= 0.3;
+  // Blues through magenta-purples (the edge at 300° included, whatever the rounding).
+  if (h >= 190 && h <= 315) s *= 0.3;
   s = Math.min(s, 0.7);
   l = Math.min(Math.max(l, 0.2), 0.46);
   return hslToRgb(h, s, l);

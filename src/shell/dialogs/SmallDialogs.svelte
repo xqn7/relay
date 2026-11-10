@@ -11,14 +11,16 @@
   let value = $state(untrack(() => (d.kind === "prompt" ? d.value : "")));
 
   function confirm() {
-    if (d.kind === "prompt") {
+    // Closing clears the dialog `d` comes from, so keep this one before closing.
+    const dialog = d;
+    if (dialog.kind === "prompt") {
       const v = value.trim();
       if (!v) return;
       dialogs.close();
-      d.onConfirm(v);
+      dialog.onConfirm(v);
     } else {
       dialogs.close();
-      d.onConfirm();
+      dialog.onConfirm();
     }
   }
 </script>

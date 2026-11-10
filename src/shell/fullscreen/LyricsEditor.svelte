@@ -35,9 +35,9 @@
   let busy = $state(false);
   let list = $state<HTMLElement>();
 
-  $effect(() => {
-    if (player.current?.track.id !== track?.id) onClose();
-  });
+  // When the song ends while editing (likely right after the last tap), the work stays; only
+  // tapping and play-from wait until this song plays again.
+  const sameSong = $derived(player.current?.track.id === track?.id);
 
   /** Rows from the text; lines that didn't change keep their times. */
   function rowsFromText(): Row[] {
@@ -61,7 +61,7 @@
   }
 
   function tap() {
-    if (at >= rows.length || !player.current) return;
+    if (at >= rows.length || !sameSong) return;
     rows[at].timeMs = Math.round(player.livePositionMs());
     at += 1;
     error = "";
@@ -90,7 +90,7 @@
 
   function playFrom(i: number) {
     const time = rows[i].timeMs;
-    if (time == null) return;
+    if (time == null || !sameSong) return;
     player.seek(Math.max(0, time - PREVIEW_LEAD_MS));
     if (!player.playing) player.play();
   }
@@ -184,7 +184,7 @@
   {:else if rows.length === 0}
     <p class="hint">{t("editor.noLines")}</p>
   {:else}
-    <p class="hint">{t("editor.syncHint")}</p>
+    <p class="hint">{sameSong ? t("editor.syncHint") : t("editor.otherSong", { title: track?.title ?? "" })}</p>
     <div class="rows" bind:this={list}>
       {#each rows as row, i (i)}
         <div class="row" class:next={i === at} class:timed={row.timeMs != null}>
@@ -202,7 +202,7 @@
       <Button variant="ghost" icon="undo" disabled={at === 0} onclick={undoTap}>{t("editor.undo")}</Button>
       <span class="grow"></span>
       <span class="progress">{t("editor.progress", { done: Math.min(at, rows.length), n: rows.length })}</span>
-      <Button variant="primary" disabled={at >= rows.length || !player.current} onclick={tap}>{t("editor.tap")}</Button>
+      <Button variant="primary" disabled={at >= rows.length || !sameSong} onclick={tap}>{t("editor.tap")}</Button>
     </footer>
   {/if}
   {#if error}<p class="error"><Icon name="alert" size={14} />{error}</p>{/if}

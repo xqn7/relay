@@ -114,6 +114,8 @@ export const en = {
   "toast.skipped": "Skipped “{title}”. It couldn't be played.",
   "toast.helperDownloading": "Downloading the YouTube helper ({pct}%)",
   "toast.helperReady": "YouTube helper is ready.",
+  "toast.ffmpegDownloading": "Downloading the video helper ({pct}%)",
+  "toast.ffmpegReady": "Video helper is ready.",
   "toast.collectionFailed": "Couldn't load that list. Try again.",
   "toast.autoplayFailed": "Couldn't find similar songs to keep playing.",
 
@@ -579,6 +581,7 @@ export const en = {
   "editor.textHint": "Paste or type the lyrics, one line per row. Then switch to Sync to time them.",
   "editor.placeholder": "Lyrics…",
   "editor.syncHint": "Play the song and press Enter (or Tap) right when each line starts. Up arrow undoes the last tap.",
+  "editor.otherSong": "Another song is playing. Your lines and times are kept and save to “{title}”; play it again to keep tapping.",
   "editor.noLines": "Add some text first.",
   "editor.playFrom": "Play from just before this line",
   "editor.earlier": "0.1 s earlier",

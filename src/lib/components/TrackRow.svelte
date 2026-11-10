@@ -74,14 +74,14 @@
       <SourceBadge source={playsFrom(track)} />
       {#if downloaded}<span class="saved" title={t("offline.downloaded")}><Icon name="download" size={12} /></span>{/if}
       <span class="truncate">
-        {#each track.artists as a, i (i)}{#if i > 0}, {/if}<button class="link" tabindex="-1" onclick={(e) => artistClick(e, i)}>{a.name}</button>{/each}
+        {#each track.artists as a, i (i)}{#if i > 0}{", "}{/if}<button class="link" tabindex="-1" onclick={(e) => artistClick(e, i)}>{a.name}</button>{/each}
         {#if unmatched}<span class="note"> · {t("track.noMatch")}</span>{/if}
       </span>
     </div>
   </div>
   {#if showAlbum}<span class="album truncate">{track.album?.name ?? ""}</span>{/if}
   <LikeButton {track} quiet />
-  <span class="time">{formatTime(track.durationMs)}</span>
+  <span class="time">{track.durationMs ? formatTime(track.durationMs) : ""}</span>
   <button class="more" aria-label={t("menu.more")} onclick={(e) => (e.stopPropagation(), onmenu(e))}>
     <Icon name="more" size={18} />
   </button>

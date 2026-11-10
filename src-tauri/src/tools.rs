@@ -39,6 +39,20 @@ struct ToolProgress {
     done: bool,
 }
 
+/// A download or unpack cut off by closing the app leaves files behind that are never
+/// finished; nothing can be using them at startup, so they go.
+fn remove_unfinished(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if name.contains(".download") {
+            let _ = std::fs::remove_file(entry.path());
+        } else if name == "ffmpeg-unpack" {
+            let _ = std::fs::remove_dir_all(entry.path());
+        }
+    }
+}
+
 /// Parses a SHA2-256SUMS file ("<hash>  <file>" per line) for one file name.
 pub fn expected_hash(sums: &str, file: &str) -> Option<String> {
     sums.lines().find_map(|l| {
@@ -90,6 +104,7 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 
 impl Tools {
     pub fn new(dir: PathBuf, http: Arc<Http>, app: AppHandle) -> Self {
+        remove_unfinished(&dir);
         Self { dir, http, app, install_lock: Mutex::new(()), installing: AtomicBool::new(false) }
     }
 

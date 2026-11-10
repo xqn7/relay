@@ -23,7 +23,9 @@ class DndStore {
   /** Key of the drop target under the pointer that accepts the payload. */
   target = $state<string | null>(null);
 
-  private handlers = new Map<string, DropHandler>();
+  // The same target can be on screen twice (a playlist in the sidebar and in the library
+  // grid), so a key keeps every live handler; removing one must not drop the other.
+  private handlers = new Map<string, DropHandler[]>();
   private armed: { make: () => Payload; x: number; y: number } | null = null;
 
   /** Call on pointerdown; the drag starts only once the pointer has moved a little. */
@@ -36,9 +38,11 @@ class DndStore {
   }
 
   register(key: string, handler: DropHandler): () => void {
-    this.handlers.set(key, handler);
+    this.handlers.set(key, [...(this.handlers.get(key) ?? []), handler]);
     return () => {
-      if (this.handlers.get(key) === handler) this.handlers.delete(key);
+      const rest = (this.handlers.get(key) ?? []).filter((h) => h !== handler);
+      if (rest.length) this.handlers.set(key, rest);
+      else this.handlers.delete(key);
     };
   }
 
@@ -57,17 +61,21 @@ class DndStore {
     const payload = this.payload;
     const key = payload ? this.targetAt(e.clientX, e.clientY) : null;
     this.stop();
-    if (payload && key) this.handlers.get(key)?.drop(payload, e.clientX, e.clientY);
+    if (payload && key) this.handler(key)?.drop(payload, e.clientX, e.clientY);
   };
 
   private onCancel = () => this.stop();
+
+  private handler(key: string): DropHandler | undefined {
+    return this.handlers.get(key)?.at(-1);
+  }
 
   private targetAt(x: number, y: number): string | null {
     if (!this.payload) return null;
     let el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-drop]");
     while (el) {
       const key = el.dataset.drop!;
-      if (this.handlers.get(key)?.accepts(this.payload)) return key;
+      if (this.handler(key)?.accepts(this.payload)) return key;
       el = el.parentElement?.closest<HTMLElement>("[data-drop]") ?? null;
     }
     return null;

@@ -4,7 +4,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::sources::links::{self, Kind, Link};
-use crate::sources::{deezer, spotify, RemoteList, Skipped, Track, DEEZER, LOCAL, SOUNDCLOUD, SPOTIFY, YOUTUBE};
+use crate::sources::{deezer, spotify, RemoteList, Skipped, Track, APPLE, DEEZER, LOCAL, SOUNDCLOUD, SPOTIFY, YOUTUBE};
 use crate::{local, AppState};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -134,24 +134,38 @@ async fn copy_in(file: &Path, folder: &Path) -> AppResult<PathBuf> {
     Ok(dest)
 }
 
-/// A song from a link line. YouTube songs are built from the #EXTINF info when present, so a
-/// long list doesn't need one request per song.
+/// A song from a link line. Songs are built from the #EXTINF info when present, so a long
+/// list doesn't need one request per song (and Relay's own exports always have it).
 async fn link_track(state: &Arc<AppState>, e: &Entry) -> AppResult<Track> {
     let Some(Link::Target { service, kind: Kind::Track, id, url }) = links::parse(&e.location) else {
         return Err(AppError::new("unsupported_link", "not a song link"));
     };
-    match (service, &e.title) {
-        (YOUTUBE, Some(title)) => {
-            let mut t = Track::imported(YOUTUBE, &id, title, e.artist.clone().into_iter().collect(), e.secs.map(|s| s * 1000), Some(format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg")), None);
-            t.link = Some(format!("https://music.youtube.com/watch?v={id}"));
-            Ok(t)
-        }
-        (YOUTUBE, None) => first(state.yt.import("track", &id).await?),
-        (SOUNDCLOUD, _) => first(state.sc.import(&url).await?),
-        (SPOTIFY, _) => spotify::track(&state.http, &id).await,
-        (DEEZER, _) => first(deezer::fetch(&state.http, "track", &id).await?),
+    if let Some(t) = from_info(service, &id, &url, e) {
+        return Ok(t);
+    }
+    match service {
+        YOUTUBE => first(state.yt.import("track", &id).await?),
+        SOUNDCLOUD => first(state.sc.import(&url).await?),
+        SPOTIFY => spotify::track(&state.http, &id).await,
+        DEEZER => first(deezer::fetch(&state.http, "track", &id).await?),
         _ => Err(AppError::new("unsupported_link", "unsupported link")),
     }
+}
+
+/// The song as the file describes it. Imported services' songs are matched to something
+/// playable later, like any other import.
+fn from_info(service: &str, id: &str, url: &str, e: &Entry) -> Option<Track> {
+    let title = e.title.as_deref()?;
+    // Exports join several artists with ", " (see `write`).
+    let artists: Vec<String> = e.artist.iter().flat_map(|a| a.split(", ")).map(str::to_string).collect();
+    let ms = e.secs.map(|s| s * 1000);
+    let mut t = match service {
+        YOUTUBE => Track::imported(YOUTUBE, id, title, artists, ms, Some(format!("https://i.ytimg.com/vi/{id}/hqdefault.jpg")), None),
+        SPOTIFY | APPLE | DEEZER => Track::imported(service, id, title, artists, ms, None, None),
+        _ => return None,
+    };
+    t.link = Some(if service == YOUTUBE { format!("https://music.youtube.com/watch?v={id}") } else { url.to_string() });
+    Some(t)
 }
 
 fn first(list: RemoteList) -> AppResult<Track> {
@@ -171,6 +185,21 @@ mod tests {
         assert_eq!(e[1].title, None);
         assert_eq!(e[2].secs, None);
         assert_eq!(e[2].title.as_deref(), Some("Just A Title"));
+    }
+
+    #[test]
+    fn songs_from_other_services_come_back_from_an_export() {
+        let text = "#EXTM3U
+#EXTINF:144,Drake, Don Toliver - Solar Eclipse
+https://music.apple.com/us/album/x/1852536368?i=1852536738
+";
+        let e = &parse(text)[0];
+        let Some(Link::Target { service, id, url, .. }) = links::parse(&e.location) else { panic!("link not read") };
+        let t = from_info(service, &id, &url, e).expect("built from the #EXTINF line");
+        assert_eq!((t.source.as_str(), t.source_id.as_str(), t.title.as_str()), (APPLE, "1852536738", "Solar Eclipse"));
+        assert_eq!(t.artist_line(), "Drake, Don Toliver");
+        assert_eq!(t.duration_ms, Some(144_000));
+        assert!(from_info(SOUNDCLOUD, "a/b", "https://soundcloud.com/a/b", e).is_none());
     }
 
     #[test]

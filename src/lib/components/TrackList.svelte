@@ -149,10 +149,12 @@
   });
   const lineTop = $derived(insertAt < 0 ? 0 : insertAt * rowHeight);
 
-  async function dropReorder(p: Payload) {
-    if (p.kind !== "tracks" || !playlistId || !p.itemIds || p.itemIds.length !== 1 || !itemIds) return;
+  // The drag state is already cleared when a drop arrives, so the position comes from the
+  // drop point, not from `insertAt`.
+  async function dropReorder(p: Payload, _x: number, y: number) {
+    if (p.kind !== "tracks" || !playlistId || !p.itemIds || p.itemIds.length !== 1 || !itemIds || !listEl) return;
     const from = itemIds.indexOf(p.itemIds[0]);
-    let to = insertAt;
+    let to = insertIndex(y - listEl.getBoundingClientRect().top, rowHeight, tracks.length);
     if (from < 0 || to < 0) return;
     if (to > from) to -= 1;
     if (to === from) return;
@@ -185,27 +187,37 @@
 
 <svelte:window onkeydown={onKey} />
 
+{#snippet row(i: number)}
+  {@const track = tracks[i]}
+  <TrackRow
+    {track}
+    {compact}
+    {showAlbum}
+    selected={selected.has(i)}
+    hidden={hiddenNow?.has(track.id) ?? false}
+    onselect={(e) => select(e, i)}
+    onactivate={() => activate(i)}
+    onmenu={(e) => menuFor(e, i)}
+    onpress={(e) => press(e, i)} />
+{/snippet}
+
 <div
   class="list"
   bind:this={listEl}
   use:dropTarget={target}
   style:padding-top={virtual ? `${range.start * rowHeight}px` : null}
   style:padding-bottom={virtual ? `${(tracks.length - range.end) * rowHeight}px` : null}>
-  {#each indices as i (keys[i])}
-    {@const track = tracks[i]}
-    <div class="slot" animate:flip={{ duration: 300, easing: spring }}>
-      <TrackRow
-        {track}
-        {compact}
-        {showAlbum}
-        selected={selected.has(i)}
-        hidden={hiddenNow?.has(track.id) ?? false}
-        onselect={(e) => select(e, i)}
-        onactivate={() => activate(i)}
-        onmenu={(e) => menuFor(e, i)}
-        onpress={(e) => press(e, i)} />
-    </div>
-  {/each}
+  <!-- Windowed lists reuse their rows by position while scrolling (a row gets the next song
+       instead of being rebuilt), and skip the reorder spring, which measures every row. -->
+  {#if virtual}
+    {#each indices as i}
+      <div class="slot">{@render row(i)}</div>
+    {/each}
+  {:else}
+    {#each indices as i (keys[i])}
+      <div class="slot" animate:flip={{ duration: 300, easing: spring }}>{@render row(i)}</div>
+    {/each}
+  {/if}
   {#if insertAt >= 0}<div class="line" style:top="{lineTop - 1}px"></div>{/if}
 </div>
 
@@ -221,6 +233,9 @@
 <style>
   .list {
     position: relative;
+    /* Windowing swaps rows and padding as you scroll; if the browser anchored the scroll
+       position to a row it would move the list again, which swaps rows again, in a loop. */
+    overflow-anchor: none;
   }
   .line {
     position: absolute;

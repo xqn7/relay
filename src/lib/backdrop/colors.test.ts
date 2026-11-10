@@ -25,6 +25,11 @@ describe("cover colors", () => {
     expect(b - Math.min(r, g)).toBeLessThan(60);
   });
 
+  it("tones magenta-purples just past 300° too", () => {
+    const [r, g, b] = toneForBackdrop([230, 20, 205]);
+    expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThan(80);
+  });
+
   it("keeps warm colors warm but dark enough for white text", () => {
     const [r, g, b] = toneForBackdrop([250, 120, 40]);
     expect(r).toBeGreaterThan(g);

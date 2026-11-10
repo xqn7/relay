@@ -78,7 +78,8 @@ class LyricsStore {
     if (found && settings.values.translateLyrics) this.translate();
   }
 
-  async translate(): Promise<void> {
+  /** `asked`: the Translate button was just pressed, so say so when there's nothing to do. */
+  async translate(asked = false): Promise<void> {
     const track = this.track;
     if (!track || !this.data) return;
     const id = this.seq;
@@ -89,6 +90,8 @@ class LyricsStore {
       if (id !== this.seq) return;
       this.sameLanguage = result.sourceLang?.toLowerCase().startsWith(lang) ?? false;
       this.translation = this.sameLanguage ? null : result.lines;
+      // The note at the top of the lyrics is out of view once the song is underway.
+      if (asked && this.sameLanguage) ui.toast(t("lyrics.sameLanguage"), "info");
     } catch (e) {
       if (id !== this.seq) return;
       const code = isAppError(e) ? e.code : "";
@@ -110,7 +113,7 @@ class LyricsStore {
   /** The Translate button: remembered, so the next songs come translated too. */
   setTranslate(on: boolean): void {
     settings.set("translateLyrics", on);
-    if (on) this.translate();
+    if (on) this.translate(true);
     else {
       this.translation = null;
       this.sameLanguage = false;

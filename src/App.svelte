@@ -54,12 +54,16 @@
   }
 
   onMount(() => {
-    let helperToast: number | null = null;
-    const off = listen<{ received: number; total: number | null; done: boolean }>("tool-progress", ({ payload }) => {
+    // One progress toast per helper: yt-dlp and ffmpeg can download at the same time.
+    const helperToasts = new Map<string, number | null>();
+    const off = listen<{ tool: string; received: number; total: number | null; done: boolean }>("tool-progress", ({ payload }) => {
       const pct = payload.total ? Math.round((payload.received / payload.total) * 100) : 0;
-      helperToast = payload.done
-        ? ui.progressToast(helperToast, t("toast.helperReady"), null)
-        : ui.progressToast(helperToast, t("toast.helperDownloading", { pct }), pct / 100);
+      const ffmpeg = payload.tool === "ffmpeg";
+      const id = helperToasts.get(payload.tool) ?? null;
+      const text = payload.done
+        ? t(ffmpeg ? "toast.ffmpegReady" : "toast.helperReady")
+        : t(ffmpeg ? "toast.ffmpegDownloading" : "toast.helperDownloading", { pct });
+      helperToasts.set(payload.tool, ui.progressToast(id, text, payload.done ? null : pct / 100));
     });
 
     restoreSession()
