@@ -105,7 +105,11 @@ async fn resolve_with(steps: &impl Steps, requested: &Track) -> AppResult<Resolu
     });
     match steps.stand_in(track, fallback).await {
         Ok((played, stream)) => Ok(Resolution { played, stream, stand_in: true }),
-        Err(e) => Err(AppError::new("nothing_playable", format!("{native_err}; stand-in: {e}"))),
+        // YouTube asking for a sign-in is worth saying (the UI can offer it) over "nothing found".
+        Err(e) => {
+            let code = if native_err.code == "signin_required" { "signin_required" } else { "nothing_playable" };
+            Err(AppError::new(code, format!("{native_err}; stand-in: {e}")))
+        }
     }
 }
 

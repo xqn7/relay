@@ -23,7 +23,8 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 rusqlite = { version = "0.37", features = ["bundled"] }
 argon2 = { version = "0.5", features = ["std"] }
 password-hash = { version = "0.5", features = ["getrandom"] }
-rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots"] }
+# userdata: the signed-in YouTube Music library ("Sync library").
+rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots", "userdata"] }
 sha2 = "0.10"
 tauri-plugin-single-instance = "2"
 # Native folder/file pickers (Add files, Local music folder, cover image).

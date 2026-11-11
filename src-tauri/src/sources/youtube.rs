@@ -29,7 +29,7 @@ impl YouTube {
     }
 }
 
-fn map_err(e: RpError) -> AppError {
+pub(crate) fn map_err(e: RpError) -> AppError {
     let code = match &e {
         RpError::Extraction(ExtractionError::NotFound { .. }) => "not_found",
         RpError::Extraction(ExtractionError::Unavailable { .. }) => "unavailable",
@@ -61,7 +61,7 @@ fn best_thumb(thumbs: &[Thumbnail]) -> Option<String> {
         .map(|t| t.url.clone())
 }
 
-fn map_track(t: TrackItem) -> Track {
+pub(crate) fn map_track(t: TrackItem) -> Track {
     let artists = t.artists.into_iter().map(|a| ArtistRef { id: a.id, name: a.name }).collect();
     Track {
         id: Track::make_id(YOUTUBE, &t.id),
@@ -87,7 +87,7 @@ fn map_album(a: AlbumItem) -> Collection {
     Collection { source: YOUTUBE.into(), kind: "album".into(), cover: best_thumb(&a.cover), year: a.year, id: a.id, title: a.name, subtitle }
 }
 
-fn map_playlist(p: MusicPlaylistItem) -> Collection {
+pub(crate) fn map_playlist(p: MusicPlaylistItem) -> Collection {
     Collection {
         source: YOUTUBE.into(),
         kind: "playlist".into(),

@@ -46,6 +46,7 @@ mod updater;
 mod util;
 mod versions;
 mod winreg;
+mod youtube_account;
 
 use accounts::Account;
 use db::Db;
@@ -88,6 +89,7 @@ pub struct AppState {
     pub discover: mixes::DiscoverCache,
     pub desktop: desktop::Desktop,
     pub updater: updater::Updater,
+    pub youtube_account: youtube_account::YouTubeAccount,
 }
 
 /// Only the app's own pages may load in the window; everything else opens in the browser.
@@ -174,6 +176,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         discover: mixes::DiscoverCache::default(),
         desktop: desktop::Desktop::new(&data_dir, in_tray),
         updater: updater::Updater::new(&local_dir),
+        youtube_account: youtube_account::YouTubeAccount::load(),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
         sc: SoundCloud::new(http.clone(), db.clone()),
@@ -195,6 +198,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     }
     os_events::start(handle.clone(), desktop::mini_shortcut(&state));
     desktop::sync_autostart(&state);
+    youtube_account::sync_tools(&state);
     overlays::sync_lyrics(&handle);
     updater::check_later(&state);
     {
@@ -416,6 +420,11 @@ pub fn run() {
             desktop_commands::update_install,
             desktop_commands::ytdlp_version,
             desktop_commands::ytdlp_update,
+            desktop_commands::youtube_status,
+            desktop_commands::youtube_sign_in,
+            desktop_commands::youtube_sign_out,
+            desktop_commands::youtube_playlists,
+            desktop_commands::youtube_playlist_tracks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

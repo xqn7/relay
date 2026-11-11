@@ -410,6 +410,11 @@ export const api = {
   updateInstall: () => invoke<void>("update_install"),
   ytdlpVersion: () => invoke<string | null>("ytdlp_version"),
   ytdlpUpdate: () => invoke<[string | null, boolean]>("ytdlp_update"),
+  youtubeStatus: () => invoke<{ signedIn: boolean; expired: boolean }>("youtube_status"),
+  youtubeSignIn: () => invoke<void>("youtube_sign_in"),
+  youtubeSignOut: () => invoke<void>("youtube_sign_out"),
+  youtubePlaylists: () => invoke<Collection[]>("youtube_playlists"),
+  youtubePlaylistTracks: (id: string) => invoke<Track[]>("youtube_playlist_tracks", { id }),
 
   libraryOverview: () => invoke<Overview>("library_overview"),
   playlistGet: (id: string) => invoke<PlaylistDetail>("playlist_get", { id }),

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { api, type PlaylistSummary } from "../lib/api";
+  import { api, type Collection, type PlaylistSummary } from "../lib/api";
   import Button from "../lib/components/Button.svelte";
   import SearchBox from "../lib/components/SearchBox.svelte";
   import Segmented from "../lib/components/Segmented.svelte";
@@ -11,6 +11,8 @@
   import { dialogs } from "../lib/stores/dialogs.svelte";
   import { dnd, dropTarget, type Payload } from "../lib/stores/dnd.svelte";
   import { library } from "../lib/stores/library.svelte";
+  import { player } from "../lib/stores/player.svelte";
+  import { youtube } from "../lib/stores/youtube.svelte";
   import { menu } from "../lib/stores/menu.svelte";
   import { ui, type LibraryTab } from "../lib/stores/ui.svelte";
   import { fold, matchesQuery } from "../lib/text";
@@ -34,6 +36,29 @@
   const folders = $derived(library.overview.folders.filter((f) => !f.parentId && matchesQuery(f.name, q)));
   const playlists = $derived(library.overview.playlists.filter((p) => (q ? matchesQuery(p.name, q) : !p.folderId)));
   const show = (name: string) => current === "all" && matchesQuery(name, q);
+  // "Sync library": the signed-in account's YouTube Music playlists, after the user's own.
+  const ytPlaylists = $derived(youtube.playlists.filter((p) => matchesQuery(p.title, q)));
+
+  async function playYoutube(p: Collection) {
+    try {
+      const tracks = await api.youtubePlaylistTracks(p.id);
+      if (tracks.length) player.playTracks(tracks, 0);
+      else ui.toast(t("toast.collectionFailed"), "alert");
+    } catch {
+      ui.toast(t("toast.collectionFailed"), "alert");
+    }
+  }
+
+  function youtubeMenu(e: MouseEvent, p: Collection) {
+    menu.show(e, [
+      { label: t("player.play"), icon: "play", action: () => playYoutube(p) },
+      {
+        label: t("youtube.importInto"),
+        icon: "download",
+        action: () => dialogs.open({ kind: "import", url: `https://music.youtube.com/playlist?list=${p.id}` }),
+      },
+    ]);
+  }
 
   function folderCovers(id: string): (string | null)[] {
     const inside = new Set([id, ...library.overview.folders.filter((f) => f.parentId === id).map((f) => f.id)]);
@@ -127,6 +152,15 @@
         onclick={() => ui.open({ name: "playlist", id: p.id })}
         onmenu={(e) => openPlaylistMenu(e, p)}
         onpress={(e) => playlistPress(e, p)} />
+    {/each}
+    {#each ytPlaylists as p (p.id)}
+      <Tile
+        title={p.title}
+        subtitle={t("youtube.fromYoutube")}
+        cover={p.cover}
+        icon="youtube"
+        onclick={() => playYoutube(p)}
+        onmenu={(e) => youtubeMenu(e, p)} />
     {/each}
     {#if show(t("trash.title")) && trashCount > 0}
       <Tile title={t("trash.title")} subtitle={t("trash.items", { n: trashCount })} icon="trash" onclick={() => ui.open({ name: "trash" })} />

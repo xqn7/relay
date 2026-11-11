@@ -150,3 +150,33 @@ pub async fn ytdlp_update(state: St<'_>) -> AppResult<(Option<String>, bool)> {
     let changed = state.tools.update_ytdlp().await?;
     Ok((state.tools.ytdlp_version().await, changed))
 }
+
+#[tauri::command]
+pub async fn youtube_status(state: St<'_>) -> AppResult<crate::youtube_account::AccountStatus> {
+    Ok(crate::youtube_account::status(&state).await)
+}
+
+/// Async: the login window must not be created on the UI thread.
+#[tauri::command]
+pub async fn youtube_sign_in(app: tauri::AppHandle) -> AppResult<()> {
+    crate::youtube_account::open_login(&app)
+}
+
+#[tauri::command]
+pub async fn youtube_sign_out(state: St<'_>) -> AppResult<()> {
+    crate::youtube_account::sign_out(&state).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn youtube_playlists(state: St<'_>) -> AppResult<Vec<crate::sources::Collection>> {
+    crate::youtube_account::playlists(&state).await
+}
+
+#[tauri::command]
+pub async fn youtube_playlist_tracks(state: St<'_>, id: String) -> AppResult<Vec<crate::sources::Track>> {
+    if id.is_empty() || id.len() > 128 || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+        return Err(AppError::new("invalid_input", "bad playlist id"));
+    }
+    crate::youtube_account::playlist_tracks(&state, &id).await
+}

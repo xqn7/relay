@@ -12,6 +12,7 @@ import { library } from "./library.svelte";
 import { offline } from "./offline.svelte";
 import { settings } from "./settings.svelte";
 import { ui } from "./ui.svelte";
+import { youtube } from "./youtube.svelte";
 
 const SAVE_DELAY_MS = 800;
 const POSITION_SAVE_MS = 15_000;
@@ -429,6 +430,12 @@ class Player {
           ? t("toast.nothingPlayable", { title: item.track.title })
           : t("toast.skipped", { title: item.track.title });
     this.playing = false;
+    if (code === "signin_required" && settings.values.youtubeAskSignIn && (!youtube.signedIn || youtube.expired)) {
+      // YouTube blocked it and nothing else had it: stay on the song and offer the fix.
+      this.failsInARow = 0;
+      ui.toast(t("youtube.blocked", { title: item.track.title }), "alert", { label: t("youtube.signIn"), run: () => youtube.signIn() });
+      return;
+    }
     if (code === "offline" && !offline.online) {
       // Offline mode: go on with the next song that is on this PC. The offline toast
       // already explained why songs are passed over.

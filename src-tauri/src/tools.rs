@@ -28,6 +28,8 @@ pub struct Tools {
     app: AppHandle,
     install_lock: Mutex<()>,
     installing: AtomicBool,
+    /// The YouTube sign-in as a Netscape cookie file's text, while "Play through your account" is on.
+    cookies: std::sync::Mutex<Option<String>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -65,7 +67,10 @@ pub fn expected_hash(sums: &str, file: &str) -> Option<String> {
 /// private, removed) or YouTube is blocking us; only the latter means the service is broken.
 pub fn classify_ytdlp_error(stderr: &str) -> &'static str {
     let s = stderr.to_lowercase();
-    if s.contains("not a bot") || s.contains("http error 429") || s.contains("rate-limit") {
+    if s.contains("not a bot") {
+        // YouTube wants a signed-in user for this request.
+        "signin_required"
+    } else if s.contains("http error 429") || s.contains("rate-limit") {
         "source_failed"
     } else if ["unavailable", "private video", "confirm your age", "age-restricted", "removed", "copyright", "members-only", "not available"]
         .iter()
@@ -105,7 +110,11 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 impl Tools {
     pub fn new(dir: PathBuf, http: Arc<Http>, app: AppHandle) -> Self {
         remove_unfinished(&dir);
-        Self { dir, http, app, install_lock: Mutex::new(()), installing: AtomicBool::new(false) }
+        Self { dir, http, app, install_lock: Mutex::new(()), installing: AtomicBool::new(false), cookies: std::sync::Mutex::new(None) }
+    }
+
+    pub fn set_cookies(&self, file: Option<String>) {
+        *self.cookies.lock().unwrap_or_else(|p| p.into_inner()) = file;
     }
 
     fn ytdlp_path(&self) -> PathBuf {
@@ -319,13 +328,24 @@ impl Tools {
             Quality::Best => "bestaudio",
             Quality::DataSaver => "bestaudio[abr<=80]/worstaudio",
         };
-        let out = tokio::process::Command::new(exe)
-            .args(["-f", format, "--no-playlist", "--no-warnings", "--print", "url", "--print", "ext", "--print", "filesize"])
-            .arg(format!("https://www.youtube.com/watch?v={video_id}"))
-            .creation_flags(CREATE_NO_WINDOW)
-            .kill_on_drop(true)
-            .output()
-            .await?;
+        let mut cmd = tokio::process::Command::new(exe);
+        cmd.args(["-f", format, "--no-playlist", "--no-warnings", "--print", "url", "--print", "ext", "--print", "filesize"]);
+        // Signed in: yt-dlp reads the cookies from a file that only exists for this one run.
+        let cookies = self.cookies.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let cookie_file = match cookies {
+            Some(text) => {
+                let path = self.dir.join(format!("cookies-{}.download", crate::util::uuid_v4()));
+                tokio::fs::write(&path, text).await?;
+                cmd.arg("--cookies").arg(&path);
+                Some(path)
+            }
+            None => None,
+        };
+        let out = cmd.arg(format!("https://www.youtube.com/watch?v={video_id}")).creation_flags(CREATE_NO_WINDOW).kill_on_drop(true).output().await;
+        if let Some(path) = cookie_file {
+            let _ = tokio::fs::remove_file(path).await;
+        }
+        let out = out?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
             let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("failed");
@@ -379,7 +399,7 @@ mod tests {
     fn tells_song_problems_from_service_problems() {
         assert_eq!(classify_ytdlp_error("ERROR: [youtube] x: Sign in to confirm your age"), "unavailable");
         assert_eq!(classify_ytdlp_error("ERROR: [youtube] x: Video unavailable"), "unavailable");
-        assert_eq!(classify_ytdlp_error("ERROR: Sign in to confirm you're not a bot"), "source_failed");
+        assert_eq!(classify_ytdlp_error("ERROR: Sign in to confirm you're not a bot"), "signin_required");
         assert_eq!(classify_ytdlp_error("ERROR: something new"), "source_failed");
     }
 }

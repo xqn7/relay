@@ -204,6 +204,7 @@ pub fn on_setting(state: &Arc<AppState>, key: &str) {
         }
         "gameMode" => crate::os_events::recheck_game(),
         "startWithWindows" => sync_autostart(state),
+        "youtubeUseAccount" => crate::youtube_account::sync_tools(state),
         k if k.starts_with("discord") => refresh_discord(state),
         _ => {}
     }

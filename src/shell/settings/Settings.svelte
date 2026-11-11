@@ -15,6 +15,7 @@
   import DiscordPage from "./DiscordPage.svelte";
   import MiniPlayerPage from "./MiniPlayerPage.svelte";
   import StartupPage from "./StartupPage.svelte";
+  import YouTubePage from "./YouTubePage.svelte";
 
   let { onSignOut }: { onSignOut: () => void } = $props();
 
@@ -97,6 +98,8 @@
         <StoragePage {visible} />
       {:else if current.id === "miniPlayer"}
         <MiniPlayerPage {visible} />
+      {:else if current.id === "youtube"}
+        <YouTubePage {visible} />
       {:else if current.id === "discord"}
         <DiscordPage {visible} />
       {:else if current.id === "startup"}

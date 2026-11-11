@@ -68,7 +68,17 @@ export const pages: PageDef[] = [
       ["mini.onTop", "mini.onTopDesc"],
     ],
   },
-  { id: "youtube", group: "settings.group.integrations", icon: "youtube", label: "settings.page.youtube", rows: [] },
+  {
+    id: "youtube",
+    group: "settings.group.integrations",
+    icon: "youtube",
+    label: "settings.page.youtube",
+    rows: [
+      ["youtube.useAccount", "youtube.useAccountDesc"],
+      ["youtube.ask", "youtube.askDesc"],
+      ["youtube.sync", "youtube.syncDesc"],
+    ],
+  },
   {
     id: "discord",
     group: "settings.group.integrations",

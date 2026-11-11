@@ -82,6 +82,12 @@ export const defaults = {
   startWithWindows: false,
   /** Started with Windows: carry on playing the last queue. */
   startPlay: false,
+  /** Signed in to YouTube: yt-dlp asks for audio as the user. */
+  youtubeUseAccount: true,
+  /** When YouTube blocks a song and nothing else plays it, offer to sign in instead of skipping. */
+  youtubeAskSignIn: true,
+  /** Show the signed-in account's YouTube Music playlists in the library. */
+  youtubeSyncLibrary: true,
 };
 
 export type Settings = typeof defaults;
@@ -119,6 +125,9 @@ const DEVICE_KEYS = new Set<SettingKey>([
   "discordButtonSpotify",
   "startWithWindows",
   "startPlay",
+  "youtubeUseAccount",
+  "youtubeAskSignIn",
+  "youtubeSyncLibrary",
 ]);
 export const CACHE_SIZES = [1, 3, 10, 0];
 export const DOWNLOAD_SIZES = [2, 5, 20, 0];
