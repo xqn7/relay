@@ -112,10 +112,6 @@ export const en = {
   "toast.sourceFailing": "{source} playback is failing right now. Trying {other}.",
   "toast.nothingPlayable": "Couldn't find a playable version of “{title}”.",
   "toast.skipped": "Skipped “{title}”. It couldn't be played.",
-  "toast.helperDownloading": "Downloading the YouTube helper ({pct}%)",
-  "toast.helperReady": "YouTube helper is ready.",
-  "toast.ffmpegDownloading": "Downloading the video helper ({pct}%)",
-  "toast.ffmpegReady": "Video helper is ready.",
   "toast.collectionFailed": "Couldn't load that list. Try again.",
   "toast.autoplayFailed": "Couldn't find similar songs to keep playing.",
 

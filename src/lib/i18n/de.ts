@@ -113,10 +113,6 @@ export const de: Record<Key, string> = {
   "toast.sourceFailing": "Wiedergabe über {source} klappt gerade nicht. Versuche {other}.",
   "toast.nothingPlayable": "Für „{title}“ wurde keine abspielbare Version gefunden.",
   "toast.skipped": "„{title}“ übersprungen. Der Song ließ sich nicht abspielen.",
-  "toast.helperDownloading": "YouTube-Hilfsprogramm wird geladen ({pct} %)",
-  "toast.helperReady": "YouTube-Hilfsprogramm ist bereit.",
-  "toast.ffmpegDownloading": "Video-Hilfsprogramm wird geladen ({pct} %)",
-  "toast.ffmpegReady": "Video-Hilfsprogramm ist bereit.",
   "toast.collectionFailed": "Die Liste konnte nicht geladen werden. Versuch es noch mal.",
   "toast.autoplayFailed": "Keine ähnlichen Songs zum Weiterspielen gefunden.",
 

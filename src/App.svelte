@@ -1,10 +1,8 @@
 <script lang="ts">
-  import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
   import SignIn from "./auth/SignIn.svelte";
   import { api, type Account } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
-  import { t } from "./lib/i18n/index.svelte";
   import { backgrounds } from "./lib/stores/backgrounds.svelte";
   import { desktop } from "./lib/stores/desktop.svelte";
   import { youtube } from "./lib/stores/youtube.svelte";
@@ -75,18 +73,6 @@
   }
 
   onMount(() => {
-    // One progress toast per helper: yt-dlp and ffmpeg can download at the same time.
-    const helperToasts = new Map<string, number | null>();
-    const off = listen<{ tool: string; received: number; total: number | null; done: boolean }>("tool-progress", ({ payload }) => {
-      const pct = payload.total ? Math.round((payload.received / payload.total) * 100) : 0;
-      const ffmpeg = payload.tool === "ffmpeg";
-      const id = helperToasts.get(payload.tool) ?? null;
-      const text = payload.done
-        ? t(ffmpeg ? "toast.ffmpegReady" : "toast.helperReady")
-        : t(ffmpeg ? "toast.ffmpegDownloading" : "toast.helperDownloading", { pct });
-      helperToasts.set(payload.tool, ui.progressToast(id, text, payload.done ? null : pct / 100));
-    });
-
     restoreSession()
       .then(() => (session.account ? enter(session.account) : undefined))
       .catch((e) => console.error("startup failed", e))
@@ -98,7 +84,6 @@
     };
     window.addEventListener("contextmenu", noContext);
     return () => {
-      off.then((f) => f());
       window.removeEventListener("contextmenu", noContext);
     };
   });

@@ -92,6 +92,8 @@ pub struct AppState {
     pub youtube_account: youtube_account::YouTubeAccount,
 }
 
+const FFMPEG_PREFETCH_DELAY: Duration = Duration::from_secs(60);
+
 /// Only the app's own pages may load in the window; everything else opens in the browser.
 pub(crate) fn is_app_url(url: &tauri::Url) -> bool {
     match url.scheme() {
@@ -160,7 +162,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
     let http = Arc::new(Http::new());
-    let tools = Arc::new(Tools::new(local_dir.join("tools"), http.clone(), handle.clone()));
+    let tools = Arc::new(Tools::new(local_dir.join("tools"), http.clone()));
     let state = AppState {
         local: local::LocalMusic::new(&handle, &db)?,
         imports: importer::Imports::default(),
@@ -222,6 +224,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             network::probe(&state, true).await;
             storage::sync(&state);
             backup::schedule(&state);
+            // ffmpeg a minute in, so the first video import or MP3 export doesn't wait for it.
+            tokio::time::sleep(FFMPEG_PREFETCH_DELAY).await;
+            if state.net.online() && !desktop::is_game(&state) {
+                state.tools.prefetch_ffmpeg();
+            }
         });
     }
 

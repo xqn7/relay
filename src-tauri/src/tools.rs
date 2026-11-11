@@ -1,44 +1,40 @@
-//! External helper programs (yt-dlp and ffmpeg). They are not bundled: each is
-//! downloaded the first time it's needed, verified against its published SHA-256, and kept
-//! in the app's data folder.
+//! External helper programs (yt-dlp and ffmpeg). They are not bundled: each is downloaded
+//! quietly in the background (yt-dlp at start, ffmpeg a minute later or when first needed),
+//! verified against its published SHA-256, and kept in the app's data folder.
 
 use crate::error::{AppError, AppResult};
 use crate::http::{check_status, Http};
 use crate::sources::{Quality, ResolvedStream, StreamKind};
 use crate::util::{now_secs, query_param};
-use serde::Serialize;
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
 const YTDLP_EXE: &str = "yt-dlp.exe";
 const FFMPEG_EXE: &str = "ffmpeg.exe";
+/// Gyan's "essentials" build (the one ffmpeg.org links for Windows). Its GitHub mirror is
+/// several times faster than gyan.dev and publishes each file's SHA-256; gyan.dev is the backup.
+const FFMPEG_RELEASE_API: &str = "https://api.github.com/repos/GyanD/codexffmpeg/releases/latest";
 const FFMPEG_ZIP: &str = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+/// Large downloads are fetched in this many parallel ranges: hosts limit speed per connection.
+const PARTS: u64 = 6;
+const SPLIT_ABOVE: u64 = 8 * 1024 * 1024;
+const PART_RETRIES: u32 = 2;
 /// Windows: run console programs without flashing a console window.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub struct Tools {
     dir: PathBuf,
     http: Arc<Http>,
-    app: AppHandle,
     install_lock: Mutex<()>,
+    ffmpeg_lock: Mutex<()>,
     installing: AtomicBool,
     /// The YouTube sign-in as a Netscape cookie file's text, while "Play through your account" is on.
     cookies: std::sync::Mutex<Option<String>>,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ToolProgress {
-    tool: &'static str,
-    received: u64,
-    total: Option<u64>,
-    done: bool,
 }
 
 /// A download or unpack cut off by closing the app leaves files behind that are never
@@ -107,10 +103,121 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
+fn is_sha256(h: &str) -> bool {
+    h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// The total size from a "Content-Range: bytes 0-0/12345" header.
+pub fn range_total(header: &str) -> Option<u64> {
+    header.strip_prefix("bytes ")?.split('/').nth(1)?.trim().parse().ok().filter(|&n| n > 0)
+}
+
+/// A release asset whose name ends with `suffix`: its download link and SHA-256, as GitHub's
+/// release API lists them.
+pub fn github_asset(release: &serde_json::Value, suffix: &str) -> Option<(String, String)> {
+    release["assets"].as_array()?.iter().find_map(|a| {
+        let name = a["name"].as_str()?;
+        let url = a["browser_download_url"].as_str().filter(|u| u.starts_with("https://github.com/"))?;
+        let digest = a["digest"].as_str()?.strip_prefix("sha256:").filter(|h| is_sha256(h))?;
+        name.ends_with(suffix).then(|| (url.to_string(), digest.to_lowercase()))
+    })
+}
+
+/// The byte ranges (inclusive) a download of `size` bytes is split into.
+pub fn split_ranges(size: u64, parts: u64) -> Vec<(u64, u64)> {
+    let step = size.div_ceil(parts.max(1));
+    (0..size).step_by(step.max(1) as usize).map(|start| (start, (start + step).min(size) - 1)).collect()
+}
+
+fn sha256_file(path: &Path) -> AppResult<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+async fn download_whole(client: &reqwest::Client, url: &str, dest: &Path) -> AppResult<()> {
+    let mut resp = client.get(url).send().await?;
+    check_status(&resp)?;
+    let mut file = tokio::fs::File::create(dest).await?;
+    while let Some(chunk) = resp.chunk().await? {
+        file.write_all(&chunk).await?;
+    }
+    file.flush().await?;
+    Ok(())
+}
+
+/// Fetches the file in parallel ranges straight into their places in `dest`. A part that
+/// breaks off resumes where it stopped.
+async fn download_parts(client: &reqwest::Client, url: &str, size: u64, dest: &Path) -> AppResult<()> {
+    tokio::fs::File::create(dest).await?.set_len(size).await?;
+    let mut tasks = tokio::task::JoinSet::new();
+    for (start, end) in split_ranges(size, PARTS) {
+        let (client, url, dest) = (client.clone(), url.to_string(), dest.to_path_buf());
+        tasks.spawn(async move { download_range(&client, &url, &dest, start, end).await });
+    }
+    while let Some(done) = tasks.join_next().await {
+        done.map_err(|e| AppError::new("internal", e.to_string()))??;
+    }
+    Ok(())
+}
+
+async fn download_range(client: &reqwest::Client, url: &str, dest: &Path, start: u64, end: u64) -> AppResult<()> {
+    let mut file = tokio::fs::OpenOptions::new().write(true).open(dest).await?;
+    let mut at = start;
+    let mut tries = 0;
+    while at <= end {
+        let attempt = async {
+            let mut resp = client.get(url).header(reqwest::header::RANGE, format!("bytes={at}-{end}")).send().await?;
+            if resp.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+                return Err(AppError::new("bad_response", format!("range request answered {}", resp.status())));
+            }
+            file.seek(std::io::SeekFrom::Start(at)).await?;
+            while let Some(chunk) = resp.chunk().await? {
+                let room = (end + 1 - at) as usize;
+                let chunk = &chunk[..chunk.len().min(room)];
+                file.write_all(chunk).await?;
+                at += chunk.len() as u64;
+            }
+            Ok(())
+        }
+        .await;
+        if let Err(e) = attempt {
+            tries += 1;
+            if tries > PART_RETRIES {
+                return Err(e);
+            }
+        } else if at <= end {
+            // The host closed the part early; ask for the rest.
+            tries += 1;
+            if tries > PART_RETRIES {
+                return Err(AppError::new("network", "download kept stopping early"));
+            }
+        }
+    }
+    file.flush().await?;
+    Ok(())
+}
+
 impl Tools {
-    pub fn new(dir: PathBuf, http: Arc<Http>, app: AppHandle) -> Self {
+    pub fn new(dir: PathBuf, http: Arc<Http>) -> Self {
         remove_unfinished(&dir);
-        Self { dir, http, app, install_lock: Mutex::new(()), installing: AtomicBool::new(false), cookies: std::sync::Mutex::new(None) }
+        Self {
+            dir,
+            http,
+            install_lock: Mutex::new(()),
+            ffmpeg_lock: Mutex::new(()),
+            installing: AtomicBool::new(false),
+            cookies: std::sync::Mutex::new(None),
+        }
     }
 
     pub fn set_cookies(&self, file: Option<String>) {
@@ -153,32 +260,31 @@ impl Tools {
         Ok(())
     }
 
-    /// Streams a download to `dest` while hashing it, with progress events. The file is
-    /// deleted again if it doesn't match `expected` (lowercase hex SHA-256).
+    /// Downloads `url` to `dest` and checks it against `expected` (lowercase hex SHA-256); a
+    /// file that doesn't match is deleted again.
     async fn download_verified(&self, tool: &'static str, url: &str, expected: &str, dest: &Path) -> AppResult<()> {
-        let mut resp = self.http.client.get(url).send().await?;
-        check_status(&resp)?;
-        let total = resp.content_length();
-        let mut file = tokio::fs::File::create(dest).await?;
-        let mut hasher = Sha256::new();
-        let (mut received, mut last_emit) = (0u64, 0u64);
-        while let Some(chunk) = resp.chunk().await? {
-            hasher.update(&chunk);
-            file.write_all(&chunk).await?;
-            received += chunk.len() as u64;
-            if received - last_emit > 512 * 1024 {
-                last_emit = received;
-                let _ = self.app.emit("tool-progress", ToolProgress { tool, received, total, done: false });
-            }
+        // A one-byte request tells whether the host serves ranges, and the full size.
+        let probe = self.http.client.get(url).header(reqwest::header::RANGE, "bytes=0-0").send().await?;
+        check_status(&probe)?;
+        let ranged = probe.status() == reqwest::StatusCode::PARTIAL_CONTENT;
+        let total = probe.headers().get(reqwest::header::CONTENT_RANGE).and_then(|v| v.to_str().ok()).and_then(range_total);
+        // Signed redirect targets (GitHub) are fetched directly by every part.
+        let final_url = probe.url().to_string();
+        drop(probe);
+        let result = match total {
+            Some(size) if ranged && size > SPLIT_ABOVE => download_parts(&self.http.client, &final_url, size, dest).await,
+            _ => download_whole(&self.http.client, &final_url, dest).await,
+        };
+        if let Err(e) = result {
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(e);
         }
-        file.flush().await?;
-        drop(file);
-        let actual: String = hasher.finalize().iter().map(|b| format!("{b:02x}")).collect();
+        let path = dest.to_path_buf();
+        let actual = tokio::task::spawn_blocking(move || sha256_file(&path)).await.map_err(|e| AppError::new("internal", e.to_string()))??;
         if actual != expected {
             let _ = tokio::fs::remove_file(dest).await;
             return Err(AppError::new("verify_failed", format!("{tool} download did not match its checksum")));
         }
-        let _ = self.app.emit("tool-progress", ToolProgress { tool, received, total, done: true });
         Ok(())
     }
 
@@ -221,29 +327,54 @@ impl Tools {
         self.dir.join(FFMPEG_EXE)
     }
 
-    /// ffmpeg, downloading it the first time (imports of video files need it). Several
-    /// imports at once share one download.
+    /// ffmpeg, downloading it now if the background download hasn't finished yet. Several
+    /// callers at once share one download.
     pub async fn ffmpeg(&self) -> AppResult<PathBuf> {
         let exe = self.ffmpeg_path();
         if exe.exists() {
             return Ok(exe);
         }
-        let _guard = self.install_lock.lock().await;
+        let _guard = self.ffmpeg_lock.lock().await;
         if !exe.exists() {
             self.install_ffmpeg().await?;
         }
         Ok(exe)
     }
 
-    /// Downloads the "essentials" build (the one ffmpeg.org links for Windows), checks its
-    /// published SHA-256 and keeps only ffmpeg.exe. Windows' own tar.exe unpacks the zip.
+    /// Fetches ffmpeg in the background some time after start, so it's there before the first
+    /// video import or MP3 export needs it.
+    pub fn prefetch_ffmpeg(self: &Arc<Self>) {
+        if self.ffmpeg_path().exists() {
+            return;
+        }
+        let tools = self.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Err(e) = tools.ffmpeg().await {
+                eprintln!("ffmpeg download failed: {e}");
+            }
+        });
+    }
+
+    /// Where to get ffmpeg and its checksum: the GitHub mirror, else gyan.dev.
+    async fn ffmpeg_source(&self) -> AppResult<(String, String)> {
+        if let Ok(release) = self.http.get_json(FFMPEG_RELEASE_API).await {
+            if let Some(found) = github_asset(&release, "essentials_build.zip") {
+                return Ok(found);
+            }
+        }
+        let sum = self.http.get_text(&format!("{FFMPEG_ZIP}.sha256")).await?;
+        let expected = sum.split_whitespace().next().filter(|h| is_sha256(h));
+        let expected = expected.ok_or_else(|| AppError::new("bad_response", "ffmpeg checksum is missing"))?.to_lowercase();
+        Ok((FFMPEG_ZIP.to_string(), expected))
+    }
+
+    /// Downloads ffmpeg, checks its SHA-256 and keeps only ffmpeg.exe. Windows' own tar.exe
+    /// unpacks the zip.
     async fn install_ffmpeg(&self) -> AppResult<()> {
         tokio::fs::create_dir_all(&self.dir).await?;
-        let sum = self.http.get_text(&format!("{FFMPEG_ZIP}.sha256")).await?;
-        let expected = sum.split_whitespace().next().filter(|h| h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit()));
-        let expected = expected.ok_or_else(|| AppError::new("bad_response", "ffmpeg checksum is missing"))?.to_lowercase();
+        let (url, expected) = self.ffmpeg_source().await?;
         let zip = self.dir.join("ffmpeg.download.zip");
-        self.download_verified("ffmpeg", FFMPEG_ZIP, &expected, &zip).await?;
+        self.download_verified("ffmpeg", &url, &expected, &zip).await?;
         let unpack = self.dir.join("ffmpeg-unpack");
         let _ = tokio::fs::remove_dir_all(&unpack).await;
         tokio::fs::create_dir_all(&unpack).await?;
@@ -393,6 +524,33 @@ mod tests {
         assert_eq!(parse_audio_codec(info).as_deref(), Some("aac"));
         assert_eq!(parse_audio_codec("Stream #0:0: Audio: opus, 48000 Hz").as_deref(), Some("opus"));
         assert_eq!(parse_audio_codec("no audio here"), None);
+    }
+
+    #[test]
+    fn splits_downloads_into_ranges() {
+        assert_eq!(split_ranges(10, 3), vec![(0, 3), (4, 7), (8, 9)]);
+        let r = split_ranges(114_768_076, PARTS);
+        assert_eq!(r.len(), PARTS as usize);
+        assert_eq!(r[0].0, 0);
+        assert_eq!(r.last().unwrap().1, 114_768_075);
+        assert!(r.windows(2).all(|w| w[0].1 + 1 == w[1].0), "ranges touch without gaps or overlap");
+        assert_eq!(range_total("bytes 0-0/23575744"), Some(23_575_744));
+        assert_eq!(range_total("bytes */0"), None);
+        assert_eq!(range_total("garbage"), None);
+    }
+
+    #[test]
+    fn reads_github_asset_digests() {
+        let hash = "60f467265b1e312373dbcd92200c2618a74850f98d3d078e94296bb3fa2047ba";
+        let release = serde_json::json!({ "assets": [
+            { "name": "ffmpeg-9.0.2-essentials_build.7z", "browser_download_url": "https://github.com/x/y.7z", "digest": format!("sha256:{hash}") },
+            { "name": "ffmpeg-9.0.2-essentials_build.zip", "browser_download_url": "https://github.com/x/y.zip", "digest": format!("sha256:{hash}") },
+        ]});
+        assert_eq!(github_asset(&release, "essentials_build.zip"), Some(("https://github.com/x/y.zip".into(), hash.into())));
+        let no_digest = serde_json::json!({ "assets": [{ "name": "a.zip", "browser_download_url": "https://github.com/a.zip" }] });
+        assert_eq!(github_asset(&no_digest, ".zip"), None);
+        let elsewhere = serde_json::json!({ "assets": [{ "name": "a.zip", "browser_download_url": "https://evil.example/a.zip", "digest": format!("sha256:{hash}") }] });
+        assert_eq!(github_asset(&elsewhere, ".zip"), None);
     }
 
     #[test]
