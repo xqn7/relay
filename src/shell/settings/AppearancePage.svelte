@@ -11,7 +11,12 @@
   import { lyrics } from "../../lib/stores/lyrics.svelte";
   import { IDLE_MINUTES, LYRICS_STYLES, settings } from "../../lib/stores/settings.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
+  import { desktop } from "../../lib/stores/desktop.svelte";
+  import { dialogs } from "../../lib/stores/dialogs.svelte";
+  import { visual } from "../../lib/stores/visual.svelte";
   import SettingRow from "./SettingRow.svelte";
+
+  const QUALITIES = ["high", "medium", "low"] as const;
 
   let { visible }: { visible: (label: Key, desc: Key) => boolean } = $props();
   const v = $derived(settings.values);
@@ -46,6 +51,29 @@
     if (v.translateLyrics) lyrics.translate();
   }
 </script>
+
+{#if visible("quality.title", "quality.desc")}
+  <h3>{t("quality.title")}</h3>
+  <div class="card">
+    <SettingRow label={t("quality.title")} desc={t(`quality.${visual.chosen}Desc`)}>
+      <Segmented
+        label={t("quality.title")}
+        value={visual.chosen}
+        options={QUALITIES.map((q) => ({ value: q, label: t(`quality.${q}`) }))}
+        onchange={(x) => settings.set("visualQuality", x)} />
+    </SettingRow>
+    {#if visual.hardware}
+      {@const hw = visual.hardware}
+      <p class="note">
+        <span class="badge">{t("quality.recommended")}</span>
+        {t("quality.recommendation", { level: t(`quality.${hw.recommended.quality}`) })}
+        {t(`quality.reason.${hw.recommended.reason}`, { ram: hw.hardware.ramGb, cores: hw.hardware.cores, w: hw.hardware.width, h: hw.hardware.height })}
+        <button class="link" onclick={() => dialogs.open({ kind: "hardware", info: hw })}>{t("quality.details")}</button>
+      </p>
+    {/if}
+    {#if visual.game}<p class="note">{t("quality.gameActive")}</p>{/if}
+  </div>
+{/if}
 
 {#if visible("bg.mode", "bg.modeDesc") || visible("bg.mix", "bg.mixDesc")}
   <h3>{t("settings.section.background")}</h3>
@@ -106,6 +134,39 @@
           <Button type="submit" variant="secondary" busy={keyBusy} disabled={!key.trim()}>{t("settings.save")}</Button>
         </form>
       {/if}
+    {/if}
+  </div>
+{/if}
+
+{#if visible("desktopLyrics.title", "desktopLyrics.desc") || visible("lockscreen.title", "lockscreen.desc")}
+  <h3>{t("settings.section.desktop")}</h3>
+  <div class="card">
+    {#if visible("desktopLyrics.title", "desktopLyrics.desc")}
+      <SettingRow label={t("desktopLyrics.title")} desc={t("desktopLyrics.desc")}>
+        <Toggle label={t("desktopLyrics.title")} checked={v.desktopLyrics} onchange={(x) => settings.set("desktopLyrics", x)} />
+      </SettingRow>
+      {#if v.desktopLyrics}
+        <SettingRow label={t("desktopLyrics.position")} desc={t("desktopLyrics.positionDesc")}>
+          <Segmented
+            label={t("desktopLyrics.position")}
+            value={v.lyricsPosition}
+            options={[
+              { value: "bottom", label: t("desktopLyrics.bottom") },
+              { value: "top", label: t("desktopLyrics.top") },
+            ]}
+            onchange={(x) => settings.set("lyricsPosition", x)} />
+        </SettingRow>
+        <SettingRow label={t("desktopLyrics.move")} desc={t("desktopLyrics.moveDesc")}>
+          <Button variant="secondary" icon={desktop.lyricsUnlocked ? "lock" : "unlock"} onclick={() => desktop.setLyricsUnlocked(!desktop.lyricsUnlocked)}>
+            {desktop.lyricsUnlocked ? t("desktopLyrics.lock") : t("desktopLyrics.unlock")}
+          </Button>
+        </SettingRow>
+      {/if}
+    {/if}
+    {#if visible("lockscreen.title", "lockscreen.desc")}
+      <SettingRow label={t("lockscreen.title")} desc={t("lockscreen.desc")}>
+        <Toggle label={t("lockscreen.title")} checked={v.lockScreen} onchange={(x) => settings.set("lockScreen", x)} />
+      </SettingRow>
     {/if}
   </div>
 {/if}
@@ -174,5 +235,26 @@
   }
   .key-row :global(.btn) {
     margin-top: 22px;
+  }
+  .badge {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 1px 7px;
+    border-radius: var(--r-full);
+    background: rgba(255, 255, 255, 0.12);
+    color: var(--text);
+    font-weight: 600;
+  }
+  .link {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--text-2);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .link:hover {
+    color: var(--text);
   }
 </style>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { backgrounds } from "../stores/backgrounds.svelte";
   import { settings, type BackgroundPlace } from "../stores/settings.svelte";
+  import { visual } from "../stores/visual.svelte";
   import BackgroundImage from "./BackgroundImage.svelte";
   import { neutralColors, type Rgb } from "./colors";
   import { coverColors, rgba } from "./extract";
@@ -43,7 +44,7 @@
   style:--bd-2={rgba(colors[1] ?? colors[0], 0.75)}
   style:--bd-3={rgba(colors[2] ?? colors[0], 0.6)}>
   {#if image}
-    <BackgroundImage url={image.url} look={backgrounds.look(image)} {colors} />
+    <BackgroundImage url={image.url} look={backgrounds.look(image)} {colors} still={visual.quality === "low"} />
   {:else if mode !== "off"}
     <div class="blob a"></div>
     <div class="blob b"></div>
@@ -118,5 +119,9 @@
     to {
       transform: translate(-10vw, 4vh) scale(1.1);
     }
+  }
+  /* Low quality: the colors stay, the drift stops. */
+  :global(html[data-quality="low"]) .blob {
+    animation: none;
   }
 </style>

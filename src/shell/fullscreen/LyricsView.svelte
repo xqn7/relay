@@ -8,6 +8,8 @@
   import Spinner from "../../lib/components/Spinner.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { activeIndex, buildLines, foldText } from "../../lib/lyrics/lines";
+  import { visual } from "../../lib/stores/visual.svelte";
+  import { desktop } from "../../lib/stores/desktop.svelte";
   import LyricText from "../../lib/lyrics/LyricText.svelte";
   import { livePosition } from "../../lib/lyrics/position.svelte";
   import { lyrics } from "../../lib/stores/lyrics.svelte";
@@ -21,7 +23,7 @@
   const FREE_SCROLL_MS = 4000;
 
   const pos = livePosition();
-  const style = $derived(settings.values.lyricsStyle);
+  const style = $derived(visual.lyricsStyle);
   const synced = $derived(lyrics.data?.synced ?? null);
   const lines = $derived(synced ? buildLines(synced, player.durationMs) : []);
   const plainLines = $derived(!synced && lyrics.data?.plain ? lyrics.data.plain.split("\n").map((l) => l.trim()) : []);
@@ -123,10 +125,23 @@
       e,
       LYRICS_STYLES.map((s) => ({
         label: t(`lyrics.style.${s}`),
-        icon: s === style ? "check" : "empty",
+        icon: s === settings.values.lyricsStyle ? "check" : "empty",
         action: () => settings.set("lyricsStyle", s),
       })),
     );
+  }
+
+  function desktopMenu(e: MouseEvent) {
+    const on = settings.values.desktopLyrics;
+    menu.show(e, [
+      { label: t("desktopLyrics.show"), icon: on ? "check" : "empty", action: () => settings.set("desktopLyrics", !on) },
+      {
+        label: desktop.lyricsUnlocked ? t("desktopLyrics.lock") : t("desktopLyrics.unlock"),
+        icon: desktop.lyricsUnlocked ? "lock" : "unlock",
+        disabled: !on,
+        action: () => desktop.setLyricsUnlocked(!desktop.lyricsUnlocked),
+      },
+    ]);
   }
 
   const credit = $derived.by(() => {
@@ -168,6 +183,7 @@
       disabled={lyrics.status !== "ready" || !!lyrics.data?.instrumental}
       onclick={() => lyrics.setTranslate(!settings.values.translateLyrics)} />
     <IconButton icon="type" label={t("lyrics.styleTip")} onclick={pickStyle} />
+    <IconButton icon="overlay" label={t("desktopLyrics.title")} active={settings.values.desktopLyrics} onclick={desktopMenu} />
     <IconButton icon="pencil" label={t("lyrics.edit")} disabled={!player.current} onclick={onEdit} />
   </div>
 
@@ -371,5 +387,9 @@
   .big-note {
     font-size: 48px;
     color: var(--text-3);
+  }
+  /* Blurred lyric edges are part of High quality only. */
+  :global(html:not([data-quality="high"])) .line {
+    filter: none;
   }
 </style>

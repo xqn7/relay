@@ -173,6 +173,41 @@ impl Tools {
         Ok(())
     }
 
+    /// The installed yt-dlp's version (a date like "2026.10.31"), if it's there.
+    pub async fn ytdlp_version(&self) -> Option<String> {
+        let out = tokio::process::Command::new(self.ytdlp_path()).arg("--version").creation_flags(CREATE_NO_WINDOW).output().await.ok()?;
+        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !v.is_empty() && v.len() < 40).then_some(v)
+    }
+
+    /// Replaces yt-dlp with the latest release when the published file differs from ours.
+    /// Returns whether anything changed.
+    pub async fn update_ytdlp(&self) -> AppResult<bool> {
+        let _guard = self.install_lock.lock().await;
+        let sums = self.http.get_text(&format!("{YTDLP_BASE}/SHA2-256SUMS")).await?;
+        let expected = expected_hash(&sums, YTDLP_EXE)
+            .ok_or_else(|| AppError::new("bad_response", "yt-dlp checksum list has no entry for yt-dlp.exe"))?;
+        let exe = self.ytdlp_path();
+        if let Ok(current) = tokio::fs::read(&exe).await {
+            let have: String = Sha256::digest(&current).iter().map(|b| format!("{b:02x}")).collect();
+            if have == expected {
+                return Ok(false);
+            }
+        }
+        tokio::fs::create_dir_all(&self.dir).await?;
+        let tmp = self.dir.join("yt-dlp.download");
+        self.download_verified("yt-dlp", &format!("{YTDLP_BASE}/{YTDLP_EXE}"), &expected, &tmp).await?;
+        // A running yt-dlp keeps its file locked against deletion, but it can be renamed away.
+        let old = self.dir.join("yt-dlp.old.download");
+        let _ = tokio::fs::remove_file(&old).await;
+        if exe.exists() {
+            tokio::fs::rename(&exe, &old).await?;
+        }
+        tokio::fs::rename(&tmp, &exe).await?;
+        let _ = tokio::fs::remove_file(&old).await;
+        Ok(true)
+    }
+
     fn ffmpeg_path(&self) -> PathBuf {
         self.dir.join(FFMPEG_EXE)
     }

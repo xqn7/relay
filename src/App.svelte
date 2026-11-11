@@ -6,6 +6,7 @@
   import Toasts from "./lib/components/Toasts.svelte";
   import { t } from "./lib/i18n/index.svelte";
   import { backgrounds } from "./lib/stores/backgrounds.svelte";
+  import { desktop } from "./lib/stores/desktop.svelte";
   import { history } from "./lib/stores/history.svelte";
   import { home } from "./lib/stores/home.svelte";
   import { imports } from "./lib/stores/imports.svelte";
@@ -35,6 +36,8 @@
       backgrounds.refresh().catch((e) => console.error("backgrounds load failed", e)),
     ]);
     await player.restore();
+    await desktop.attach().catch((e) => console.error("desktop integration failed", e));
+    desktop.autoPlay();
     // After the queue's volume is back, so startup keeps it; then each device's own EQ applies.
     sound.attach().catch((e) => console.error("sound setup failed", e));
     api.trashPurgeExpired().catch(() => {});

@@ -120,7 +120,7 @@ pub fn setting_set(state: St, scope: String, key: String, value: Value) -> AppRe
                 "maxCacheGb" => crate::storage::enforce_cache_limit(&state),
                 "downloadLimitGb" | "autoDownloadLiked" => crate::storage::sync(state.inner()),
                 "autoBackup" | "backupFolder" => crate::backup::schedule(state.inner()),
-                _ => {}
+                k => crate::desktop::on_setting(state.inner(), k),
             }
             Ok(())
         }
@@ -283,13 +283,12 @@ pub fn queue_load(state: St) -> AppResult<Option<Value>> {
 
 #[tauri::command]
 pub fn media_track(state: St, now_playing: NowPlaying) {
-    state.media.set_track(&now_playing);
+    crate::desktop::on_track(state.inner(), now_playing);
 }
 
 #[tauri::command]
 pub fn media_state(state: St, playing: bool, position_ms: u64, duration_ms: u64) {
-    state.media.set_playing(playing);
-    state.media.set_position(position_ms, duration_ms);
+    crate::desktop::on_state(state.inner(), playing, position_ms, duration_ms);
 }
 
 /// Opens a web link in the user's browser; the app window itself never leaves the app.
@@ -303,8 +302,11 @@ pub fn open_external(url: String) -> AppResult<()> {
     Ok(())
 }
 
+/// Async so the last tidy-up (which may wait on Windows) never blocks the UI thread.
 #[tauri::command]
-pub fn exit_app(app: tauri::AppHandle, state: St) {
-    state.media.clear();
+pub async fn exit_app(app: tauri::AppHandle, state: St<'_>) -> AppResult<()> {
+    let state = state.inner().clone();
+    let _ = tokio::task::spawn_blocking(move || crate::desktop::before_exit(&state)).await;
     app.exit(0);
+    Ok(())
 }

@@ -438,9 +438,9 @@ async fn run(state: &Arc<AppState>) -> AppResult<()> {
     let limit = limit_bytes(state, "downloadLimitGb", DEFAULT_DOWNLOAD_LIMIT_GB);
     set_status(state, |s| *s = DownloadStatus { active: !missing.is_empty(), done: have.len(), total: wanted.len(), full: false, failed: 0 });
     for id in missing {
-        if state.storage.again.load(Ordering::SeqCst) || !state.net.online() {
-            // The list changed (a fresh run follows), or the internet is gone (going back
-            // online starts a new run).
+        if state.storage.again.load(Ordering::SeqCst) || !state.net.online() || crate::desktop::is_game(state) {
+            // The list changed (a fresh run follows), the internet is gone (going back
+            // online starts a new run), or a game runs in Game mode (its end starts one).
             break;
         }
         if limit.is_some_and(|l| download_bytes(state) >= l) {

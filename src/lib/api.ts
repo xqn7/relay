@@ -390,13 +390,26 @@ export const api = {
   queueSave: (queue: unknown) => invoke<void>("queue_save", { queue }),
   queueLoad: () => invoke<unknown>("queue_load"),
 
-  mediaTrack: (nowPlaying: { title: string; artist: string; album: string | null; cover: string | null; durationMs: number }) =>
-    invoke<void>("media_track", { nowPlaying }),
+  mediaTrack: (nowPlaying: NowPlayingInfo) => invoke<void>("media_track", { nowPlaying }),
   mediaState: (playing: boolean, positionMs: number, durationMs: number) =>
     invoke<void>("media_state", { playing, positionMs: Math.max(0, Math.round(positionMs)), durationMs: Math.max(0, Math.round(durationMs)) }),
 
   openExternal: (url: string) => invoke<void>("open_external", { url }),
   exitApp: () => invoke<void>("exit_app"),
+
+  desktopInfo: () => invoke<DesktopInfo>("desktop_info"),
+  mainWindowShow: () => invoke<void>("main_window_show"),
+  miniToggle: () => invoke<void>("mini_toggle"),
+  lyricsUnlock: (unlocked: boolean) => invoke<void>("lyrics_unlock", { unlocked }),
+  uiLabels: (labels: UiLabels) => invoke<void>("ui_labels", { labels }),
+  hardwareInfo: () => invoke<HardwareInfo>("hardware_info"),
+  discordPreview: () => invoke<DiscordActivity | null>("discord_preview"),
+  lockscreenSet: (png: Uint8Array) => invoke<{ spotlight: boolean }>("lockscreen_set", png),
+  lockscreenRestore: () => invoke<void>("lockscreen_restore"),
+  updateCheck: () => invoke<UpdateInfo | null>("update_check"),
+  updateInstall: () => invoke<void>("update_install"),
+  ytdlpVersion: () => invoke<string | null>("ytdlp_version"),
+  ytdlpUpdate: () => invoke<[string | null, boolean]>("ytdlp_update"),
 
   libraryOverview: () => invoke<Overview>("library_overview"),
   playlistGet: (id: string) => invoke<PlaylistDetail>("playlist_get", { id }),
@@ -535,6 +548,75 @@ export function formatBytes(bytes: number): string {
   }
   const digits = i >= 3 && v < 10 ? 1 : 0;
   return `${v.toFixed(digits)} ${units[i]}`;
+}
+
+/** What the backend shows outside the window: media overlay, tray, Discord. */
+export interface NowPlayingInfo {
+  title: string;
+  artist: string;
+  album: string | null;
+  cover: string | null;
+  durationMs: number;
+  artistId: string | null;
+  links: { youtube: string | null; soundcloud: string | null; spotify: string | null };
+}
+
+export interface DesktopInfo {
+  startedInTray: boolean;
+  game: boolean;
+  shortcutOk: boolean;
+  miniCustom: boolean;
+  lyricsCustom: boolean;
+  lyricsUnlocked: boolean;
+  discord: "unset" | "off" | "waiting" | "connected";
+  version: string;
+}
+
+export interface UiLabels {
+  play: string;
+  pause: string;
+  next: string;
+  previous: string;
+  privateSession: string;
+  miniPlayer: string;
+  unlockLyrics: string;
+  lockLyrics: string;
+  show: string;
+  quit: string;
+  paused: string;
+  listenYoutube: string;
+  listenSoundcloud: string;
+  listenSpotify: string;
+}
+
+export type VisualQuality = "high" | "medium" | "low";
+
+export interface HardwareInfo {
+  hardware: {
+    cpu: string;
+    cores: number;
+    ramGb: number;
+    gpu: string;
+    gpuIntegrated: boolean;
+    width: number;
+    height: number;
+    refreshHz: number;
+  };
+  recommended: { quality: VisualQuality; reason: "weak" | "integratedSmall" | "integratedScreen" | "strong" };
+}
+
+/** Discord's activity as the backend would send it (shape from Discord's RPC). */
+export interface DiscordActivity {
+  details: string;
+  state: string;
+  timestamps?: { start: number; end: number };
+  assets?: { large_image?: string; large_text?: string; small_image?: string; small_text?: string };
+  buttons?: { label: string; url: string }[];
+}
+
+export interface UpdateInfo {
+  version: string;
+  notes: string;
 }
 
 export function artistLine(t: Pick<Track, "artists">): string {

@@ -101,6 +101,18 @@ body {
   height: 100%;
 }
 
+html.overlay,
+html.overlay body {
+  background: transparent;
+}
+
+/* Game mode: nothing moves while a game runs. */
+html[data-game] *,
+html[data-game] *::before,
+html[data-game] *::after {
+  animation-play-state: paused !important;
+}
+
 html.dragging,
 html.dragging * {
   cursor: grabbing !important;

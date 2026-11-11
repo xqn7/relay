@@ -14,6 +14,7 @@
   import { settings } from "../../lib/stores/settings.svelte";
   import RangePanel from "../RangePanel.svelte";
   import Visualizer from "./Visualizer.svelte";
+  import { visual } from "../../lib/stores/visual.svelte";
   import Spinner from "../../lib/components/Spinner.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { openArtist } from "../../lib/navigate";
@@ -58,7 +59,7 @@
 
 <div class="full" role="dialog" aria-modal="true" aria-label={t("full.title")} transition:fly={{ y: 24, duration: 220 }}>
   <Backdrop cover={cover} place="fullscreen" bind:colors />
-  {#if settings.values.visualizer && track}<Visualizer {colors} style={settings.values.visualizerStyle} />{/if}
+  {#if settings.values.visualizer && visual.quality !== "low" && track}<Visualizer {colors} style={settings.values.visualizerStyle} />{/if}
   <div class="top" data-tauri-drag-region>
     <IconButton icon="chevronDown" label={t("full.close")} size={20} onclick={close} />
     <WindowControls />
@@ -70,7 +71,7 @@
         {#if player.markers}<RangePanel docked />{/if}
         {#each [track] as tr (tr?.id)}
           {@const url = artUrl(tr)}
-          <div class="art-cell" in:scale={{ start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: 360 }}>
+          <div class="art-cell" in:scale={visual.quality === "low" ? { start: 1, duration: 140, opacity: 0 } : { start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: visual.quality === "low" ? 100 : 360 }}>
             {#if url}
               <img src={url} alt="" draggable="false" />
             {:else}

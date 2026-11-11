@@ -4,8 +4,16 @@
   import { library } from "../stores/library.svelte";
   import Icon from "./Icon.svelte";
 
-  let { track, size = 18, quiet = false }: { track: Track; size?: number; quiet?: boolean } = $props();
-  const liked = $derived(library.liked.has(track.id));
+  // The mini player has no library of its own: it passes the state in and asks the main
+  // window to toggle (`liked` + `ontoggle`).
+  let {
+    track,
+    size = 18,
+    quiet = false,
+    liked: given,
+    ontoggle,
+  }: { track: Pick<Track, "id">; size?: number; quiet?: boolean; liked?: boolean; ontoggle?: () => void } = $props();
+  const liked = $derived(given ?? library.liked.has(track.id));
   // Bumped on each like so the pop/burst animation restarts; unliking just empties the heart.
   let burst = $state(0);
   // Long lists reuse rows for other songs; a burst belongs to the song that was liked.
@@ -17,7 +25,8 @@
   function toggle(e: MouseEvent) {
     e.stopPropagation();
     if (!liked) burst += 1;
-    library.toggleLike(track);
+    if (ontoggle) ontoggle();
+    else library.toggleLike(track as Track);
   }
 </script>
 

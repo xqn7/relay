@@ -4,6 +4,7 @@
   import { onMount } from "svelte";
   import { player } from "../../lib/stores/player.svelte";
   import { settings } from "../../lib/stores/settings.svelte";
+  import { visual } from "../../lib/stores/visual.svelte";
   import IdleView from "./IdleView.svelte";
 
   /** Input events are frequent; the timer only restarts this often. */
@@ -22,7 +23,7 @@
   }
 
   function check() {
-    if (player.playing && inFront()) idle = true;
+    if (player.playing && inFront() && !visual.game) idle = true;
     else arm();
   }
 

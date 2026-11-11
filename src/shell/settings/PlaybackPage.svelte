@@ -16,7 +16,7 @@
   const crossfadeOptions = $derived([0, 3, 6, 9, 12].map((n) => ({ value: n, label: n === 0 ? t("settings.off") : t("settings.seconds", { n }) })));
 </script>
 
-{#if visible("settings.autoplay", "settings.autoplayDesc") || visible("settings.doubleClick", "settings.doubleClickDesc") || visible("settings.startup", "settings.startupDesc") || visible("settings.pauseOnDevice", "settings.pauseOnDeviceDesc")}
+{#if visible("settings.autoplay", "settings.autoplayDesc") || visible("settings.doubleClick", "settings.doubleClickDesc") || visible("settings.startup", "settings.startupDesc") || visible("settings.pauseOnDevice", "settings.pauseOnDeviceDesc") || visible("settings.gameMode", "settings.gameModeDesc")}
   <h3>{t("settings.section.queue")}</h3>
   <div class="card">
     {#if visible("settings.autoplay", "settings.autoplayDesc")}
@@ -51,6 +51,11 @@
     {#if visible("settings.pauseOnDevice", "settings.pauseOnDeviceDesc")}
       <SettingRow label={t("settings.pauseOnDevice")} desc={t("settings.pauseOnDeviceDesc")}>
         <Toggle label={t("settings.pauseOnDevice")} checked={v.pauseOnDeviceChange} onchange={(x) => settings.set("pauseOnDeviceChange", x)} />
+      </SettingRow>
+    {/if}
+    {#if visible("settings.gameMode", "settings.gameModeDesc")}
+      <SettingRow label={t("settings.gameMode")} desc={t("settings.gameModeDesc")}>
+        <Toggle label={t("settings.gameMode")} checked={v.gameMode} onchange={(x) => settings.set("gameMode", x)} />
       </SettingRow>
     {/if}
   </div>

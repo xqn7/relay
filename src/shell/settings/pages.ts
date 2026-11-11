@@ -2,7 +2,7 @@
 import type { Key } from "../../lib/i18n/en";
 import type { IconName } from "../../lib/icons";
 
-export type PageId = "playback" | "appearance" | "miniPlayer" | "youtube" | "discord" | "storage" | "about" | "docs";
+export type PageId = "playback" | "appearance" | "miniPlayer" | "youtube" | "discord" | "storage" | "startup" | "about" | "docs";
 
 export interface PageDef {
   id: PageId;
@@ -24,6 +24,7 @@ export const pages: PageDef[] = [
       ["settings.doubleClick", "settings.doubleClickDesc"],
       ["settings.startup", "settings.startupDesc"],
       ["settings.pauseOnDevice", "settings.pauseOnDeviceDesc"],
+      ["settings.gameMode", "settings.gameModeDesc"],
       ["settings.crossfade", "settings.crossfadeDesc"],
       ["settings.normalize", "settings.normalizeDesc"],
       ["settings.quality", "settings.qualityDesc"],
@@ -40,6 +41,7 @@ export const pages: PageDef[] = [
     icon: "palette",
     label: "settings.page.appearance",
     rows: [
+      ["quality.title", "quality.desc"],
       ["bg.mode", "bg.modeDesc"],
       ["bg.mix", "bg.mixDesc"],
       ["settings.lyricsStyle", "settings.lyricsStyleDesc"],
@@ -49,11 +51,39 @@ export const pages: PageDef[] = [
       ["settings.idle", "settings.idleDesc"],
       ["settings.waveform", "settings.waveformDesc"],
       ["settings.visualizer", "settings.visualizerDesc"],
+      ["desktopLyrics.title", "desktopLyrics.desc"],
+      ["lockscreen.title", "lockscreen.desc"],
     ],
   },
-  { id: "miniPlayer", group: "settings.group.interface", icon: "overlay", label: "settings.page.miniPlayer", rows: [] },
+  {
+    id: "miniPlayer",
+    group: "settings.group.interface",
+    icon: "overlay",
+    label: "settings.page.miniPlayer",
+    rows: [
+      ["mini.enable", "mini.enableDesc"],
+      ["mini.position", "mini.positionDesc"],
+      ["mini.shortcut", "mini.shortcutDesc"],
+      ["mini.autoShow", "mini.autoShowDesc"],
+      ["mini.onTop", "mini.onTopDesc"],
+    ],
+  },
   { id: "youtube", group: "settings.group.integrations", icon: "youtube", label: "settings.page.youtube", rows: [] },
-  { id: "discord", group: "settings.group.integrations", icon: "chat", label: "settings.page.discord", rows: [] },
+  {
+    id: "discord",
+    group: "settings.group.integrations",
+    icon: "chat",
+    label: "settings.page.discord",
+    rows: [
+      ["discord.enable", "discord.enableDesc"],
+      ["discord.format", "discord.formatDesc"],
+      ["discord.timeline", "discord.timelineDesc"],
+      ["discord.artwork", "discord.artworkDesc"],
+      ["discord.badge", "discord.badgeDesc"],
+      ["discord.paused", "discord.pausedDesc"],
+      ["discord.buttons", "discord.buttonsDesc"],
+    ],
+  },
   {
     id: "storage",
     group: "settings.group.application",
@@ -73,6 +103,16 @@ export const pages: PageDef[] = [
       ["connection.title", "connection.desc"],
     ],
   },
-  { id: "about", group: "settings.group.application", icon: "info", label: "settings.page.about", rows: [] },
+  {
+    id: "startup",
+    group: "settings.group.application",
+    icon: "power",
+    label: "settings.page.startup",
+    rows: [
+      ["startup.withWindows", "startup.withWindowsDesc"],
+      ["startup.play", "startup.playDesc"],
+    ],
+  },
+  { id: "about", group: "settings.group.application", icon: "info", label: "settings.page.about", rows: [["about.app", "about.appDesc"], ["about.ytdlp", "about.ytdlpMissing"]] },
   { id: "docs", group: "settings.group.help", icon: "book", label: "settings.page.docs", rows: [] },
 ];

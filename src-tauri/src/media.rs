@@ -24,7 +24,7 @@ struct MediaKey {
     position_ms: Option<u64>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NowPlaying {
     pub title: String,
@@ -32,6 +32,19 @@ pub struct NowPlaying {
     pub album: Option<String>,
     pub cover: Option<String>,
     pub duration_ms: u64,
+    /// The first artist's YouTube Music id, for the artist photo on Discord.
+    #[serde(default)]
+    pub artist_id: Option<String>,
+    /// Links to the song on each service it's known on (Discord's profile buttons).
+    #[serde(default)]
+    pub links: SongLinks,
+}
+
+#[derive(Clone, Default, Deserialize)]
+pub struct SongLinks {
+    pub youtube: Option<String>,
+    pub soundcloud: Option<String>,
+    pub spotify: Option<String>,
 }
 
 /// TimeSpan counts 100-nanosecond ticks.

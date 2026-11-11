@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fade, scale } from "svelte/transition";
+  import { visual } from "../lib/stores/visual.svelte";
   import { formatTime } from "../lib/api";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
@@ -68,7 +69,7 @@
            each keeps the outgoing song's own details while it fades. -->
       <div class="swap">
         {#each [track] as tr (tr.id)}
-          <div class="swap-cell" in:scale={{ start: 0.96, duration: 280, opacity: 0 }} out:fade={{ duration: 160 }}>
+          <div class="swap-cell" in:scale={visual.quality === "low" ? { start: 1, duration: 120, opacity: 0 } : { start: 0.96, duration: 280, opacity: 0 }} out:fade={{ duration: visual.quality === "low" ? 80 : 160 }}>
             <button class="cover-btn" title={t("full.open")} onclick={() => (ui.fullscreenOpen = true)}><Cover src={tr.cover ?? player.via?.cover ?? null} size={44} /></button>
             <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [tr], index: 0 })}>
               <div class="title truncate">{tr.title}</div>

@@ -5,13 +5,35 @@
   import { rgba } from "./extract";
   import { lookFilter, type Look } from "./look";
 
-  let { url, look, colors = [] }: { url: string; look: Look; colors?: Rgb[] } = $props();
+  // `still`: animated GIFs hold their first frame (Low visual quality and Game mode).
+  let { url, look, colors = [], still = false }: { url: string; look: Look; colors?: Rgb[]; still?: boolean } = $props();
+
+  let frame = $state<string | null>(null);
+
+  $effect(() => {
+    frame = null;
+    if (!still || !url.toLowerCase().endsWith(".gif")) return;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      canvas.getContext("2d")?.drawImage(img, 0, 0);
+      canvas.toBlob((b) => b && (frame = URL.createObjectURL(b)));
+    };
+    img.src = url;
+    return () => {
+      img.onload = null;
+      if (frame) URL.revokeObjectURL(frame);
+    };
+  });
 </script>
 
 <div class="bg" aria-hidden="true">
   <!-- Pulled out past the edges by the blur radius, so blurred edges don't fade to black. -->
   <img
-    src={url}
+    src={still && frame ? frame : url}
     alt=""
     draggable="false"
     style:left="-{look.blur * 2}px"

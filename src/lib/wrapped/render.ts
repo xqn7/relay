@@ -11,7 +11,7 @@ const PAD = 44;
 const FONT = "Inter, 'Segoe UI', sans-serif";
 const BG = "#0a0a0b";
 
-function loadImage(url: string): Promise<HTMLImageElement | null> {
+export function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -24,14 +24,14 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
 const cover = (url: string | null) => (url ? loadImage(proxiedCover(coverAt(url, 240) ?? url)) : Promise.resolve(null));
 
 /** Cuts text to fit `max` pixels, ending in "…". */
-function fit(ctx: CanvasRenderingContext2D, text: string, max: number): string {
+export function fit(ctx: CanvasRenderingContext2D, text: string, max: number): string {
   if (ctx.measureText(text).width <= max) return text;
   let cut = text;
   while (cut.length > 1 && ctx.measureText(`${cut}…`).width > max) cut = cut.slice(0, -1);
   return `${cut.trimEnd()}…`;
 }
 
-function font(ctx: CanvasRenderingContext2D, weight: number, size: number, alpha = 1): void {
+export function font(ctx: CanvasRenderingContext2D, weight: number, size: number, alpha = 1): void {
   ctx.font = `${weight} ${size}px ${FONT}`;
   ctx.fillStyle = `rgba(255,255,255,${alpha})`;
 }

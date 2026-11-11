@@ -4,14 +4,19 @@ mod backup;
 mod commands;
 mod covers;
 mod db;
+mod desktop;
+mod desktop_commands;
+mod discord;
 mod error;
 mod export;
+mod hardware;
 mod history;
 mod http;
 mod importer;
 mod library;
 mod library_commands;
 mod local;
+mod lockscreen;
 mod lyrics;
 mod lyrics_commands;
 mod m3u;
@@ -20,7 +25,10 @@ mod matching;
 mod media;
 mod mixes;
 mod network;
+mod os_events;
+mod overlays;
 mod personal_commands;
+mod power;
 mod profile;
 mod resolver;
 mod secrets;
@@ -30,10 +38,14 @@ mod sources;
 mod storage;
 mod storage_commands;
 mod streams;
+mod taskbar;
 mod tools;
 mod translate;
+mod tray;
+mod updater;
 mod util;
 mod versions;
+mod winreg;
 
 use accounts::Account;
 use db::Db;
@@ -74,15 +86,39 @@ pub struct AppState {
     /// Profile pictures and background images.
     pub user_dir: std::path::PathBuf,
     pub discover: mixes::DiscoverCache,
+    pub desktop: desktop::Desktop,
+    pub updater: updater::Updater,
 }
 
 /// Only the app's own pages may load in the window; everything else opens in the browser.
-fn is_app_url(url: &tauri::Url) -> bool {
+pub(crate) fn is_app_url(url: &tauri::Url) -> bool {
     match url.scheme() {
         "tauri" => true,
         "http" | "https" => matches!(url.host_str(), Some("tauri.localhost")) || (cfg!(dev) && url.host_str() == Some("localhost")),
         _ => false,
     }
+}
+
+/// Brings the main window forward from anywhere (tray, mini player, second launch).
+pub(crate) fn show_main(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+/// Quitting asks the UI to save the queue and position first; if the UI doesn't answer within
+/// a moment (e.g. it crashed), Relay quits anyway.
+pub(crate) fn request_quit(app: &AppHandle) {
+    let _ = app.emit("app-closing", ());
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(1500)).await;
+        let state = app.state::<Arc<AppState>>().inner().clone();
+        let _ = tokio::task::spawn_blocking(move || desktop::before_exit(&state)).await;
+        app.exit(0);
+    });
 }
 
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
@@ -92,6 +128,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&local_dir)?;
 
+    let in_tray = std::env::args().any(|a| a == desktop::TRAY_ARG);
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Relay")
         .inner_size(1280.0, 800.0)
@@ -110,12 +147,14 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         // Hidden until the page is there: a new WebView2 paints one white frame before its
         // background color applies, which flashes on screen at startup.
         .visible(false)
-        .on_page_load(|window, payload| {
-            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+        .on_page_load(move |window, payload| {
+            // Started with Windows: stays in the tray (no window, no startup animation).
+            if payload.event() == tauri::webview::PageLoadEvent::Finished && !in_tray {
                 let _ = window.show();
             }
         })
         .build()?;
+    taskbar::attach(&handle, window.hwnd()?);
 
     let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
     let http = Arc::new(Http::new());
@@ -133,6 +172,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         private: AtomicBool::new(false),
         user_dir: profile::dir(&data_dir),
         discover: mixes::DiscoverCache::default(),
+        desktop: desktop::Desktop::new(&data_dir, in_tray),
+        updater: updater::Updater::new(&local_dir),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
         sc: SoundCloud::new(http.clone(), db.clone()),
@@ -149,6 +190,20 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     audio_devices::watch(handle.clone());
     audio_devices::allow_output_names(&window);
     network::watch(&handle);
+    if let Err(e) = tray::create(&handle) {
+        eprintln!("tray icon failed: {e}");
+    }
+    os_events::start(handle.clone(), desktop::mini_shortcut(&state));
+    desktop::sync_autostart(&state);
+    overlays::sync_lyrics(&handle);
+    updater::check_later(&state);
+    {
+        // After a crash, Relay's picture may still be on the lock screen.
+        let state = state.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let _ = state.desktop.lockscreen.restore();
+        });
+    }
     tauri::async_runtime::spawn(local::start(state.clone()));
     {
         // Startup housekeeping for stored songs, then continue any unfinished downloads.
@@ -166,8 +221,6 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Closing asks the UI to save the queue and position first; if the UI doesn't answer
-    // within a moment (e.g. it crashed), quit anyway.
     window.on_window_event(move |event| {
         // Files dragged in from anywhere go to Local music. The page only shows the reaction;
         // the paths never pass through the webview.
@@ -183,14 +236,14 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             };
             let _ = handle.emit("file-drag", kind);
         }
+        if let tauri::WindowEvent::Resized(_) = event {
+            if let Some(main) = handle.get_webview_window("main") {
+                overlays::main_minimized(&handle, main.is_minimized().unwrap_or(false));
+            }
+        }
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
-            let _ = handle.emit("app-closing", ());
-            let handle = handle.clone();
-            tauri::async_runtime::spawn(async move {
-                tokio::time::sleep(Duration::from_millis(1500)).await;
-                handle.exit(0);
-            });
+            request_quit(&handle);
         }
     });
     Ok(())
@@ -202,13 +255,7 @@ pub fn run() {
         // A second launch (desktop shortcut, Start menu) brings the running player forward
         // instead of starting another one that would fight over the database and audio.
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.unminimize();
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
         .register_asynchronous_uri_scheme_protocol("relay", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -356,6 +403,19 @@ pub fn run() {
             personal_commands::speed_dial_list,
             personal_commands::speed_dial_set,
             personal_commands::speed_dial_order,
+            desktop_commands::desktop_info,
+            desktop_commands::main_window_show,
+            desktop_commands::mini_toggle,
+            desktop_commands::lyrics_unlock,
+            desktop_commands::ui_labels,
+            desktop_commands::hardware_info,
+            desktop_commands::discord_preview,
+            desktop_commands::lockscreen_set,
+            desktop_commands::lockscreen_restore,
+            desktop_commands::update_check,
+            desktop_commands::update_install,
+            desktop_commands::ytdlp_version,
+            desktop_commands::ytdlp_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Relay");

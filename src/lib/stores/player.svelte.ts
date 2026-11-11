@@ -1,7 +1,7 @@
 // The player: owns the queue, drives the audio engine, talks to the backend, and keeps the
 // Windows media overlay and the saved queue in sync.
 import { listen } from "@tauri-apps/api/event";
-import { api, artistLine, formatTime, IMPORT_ONLY, isAppError, type Prepared, type Track, type Trim } from "../api";
+import { api, artistLine, formatTime, IMPORT_ONLY, isAppError, type NowPlayingInfo, type Prepared, type Track, type Trim } from "../api";
 import { AudioEngine, type Jump } from "../audio/engine";
 import { t } from "../i18n/index.svelte";
 import { PlayCounter } from "../player/playCount";
@@ -124,6 +124,7 @@ class Player {
     await listen<{ action: string; positionMs: number | null }>("media-key", ({ payload }) => {
       if (payload.action === "play") this.play();
       else if (payload.action === "pause") this.pause();
+      else if (payload.action === "toggle") this.toggle();
       else if (payload.action === "next") this.next();
       else if (payload.action === "previous") this.previous();
       else if (payload.action === "seek" && payload.positionMs != null) this.seek(payload.positionMs);
@@ -758,8 +759,18 @@ function trimOf(track: Track): Trim | null {
   return library.trims[track.id] ?? null;
 }
 
-function mediaInfo(track: Track) {
-  return { title: track.title, artist: artistLine(track), album: track.album?.name ?? null, cover: track.cover, durationMs: track.durationMs ?? 0 };
+function mediaInfo(track: Track): NowPlayingInfo {
+  const link = (source: string) => (track.source === source ? track.link : null);
+  return {
+    title: track.title,
+    artist: artistLine(track),
+    album: track.album?.name ?? null,
+    cover: track.cover,
+    durationMs: track.durationMs ?? 0,
+    // Artist ids of YouTube songs are YouTube Music ids, which is where the photo comes from.
+    artistId: track.source === "youtube" ? (track.artists[0]?.id ?? null) : null,
+    links: { youtube: link("youtube"), soundcloud: link("soundcloud"), spotify: link("spotify") },
+  };
 }
 
 export function sourceLabel(source: string): string {

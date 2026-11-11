@@ -1,5 +1,5 @@
 // One dialog at a time, opened from anywhere (menus, pages, the sidebar).
-import type { Skipped, Track } from "../api";
+import type { HardwareInfo, Skipped, Track, UpdateInfo } from "../api";
 
 export type Dialog =
   | { kind: "prompt"; title: string; label: string; value: string; confirm: string; onConfirm: (value: string) => void }
@@ -11,6 +11,8 @@ export type Dialog =
   | { kind: "editLocal"; track: Track }
   | { kind: "merge"; playlistId: string }
   | { kind: "connection" }
+  | { kind: "update"; info: UpdateInfo }
+  | { kind: "hardware"; info: HardwareInfo }
   | { kind: "versions"; track: Track; playlist?: { id: string; itemId: string; onReplaced: () => void } }
   /** Crops a picked image to `aspect` (width / height) and hands back a JPEG `outWidth` wide. */
   | { kind: "crop"; title: string; file: File; aspect: number; outWidth: number; round?: boolean; onDone: (jpeg: Uint8Array) => Promise<void> };

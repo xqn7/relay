@@ -11,6 +11,10 @@
   import AppearancePage from "./AppearancePage.svelte";
   import PlaybackPage from "./PlaybackPage.svelte";
   import StoragePage from "./StoragePage.svelte";
+  import AboutPage from "./AboutPage.svelte";
+  import DiscordPage from "./DiscordPage.svelte";
+  import MiniPlayerPage from "./MiniPlayerPage.svelte";
+  import StartupPage from "./StartupPage.svelte";
 
   let { onSignOut }: { onSignOut: () => void } = $props();
 
@@ -91,6 +95,14 @@
         <AppearancePage {visible} />
       {:else if current.id === "storage"}
         <StoragePage {visible} />
+      {:else if current.id === "miniPlayer"}
+        <MiniPlayerPage {visible} />
+      {:else if current.id === "discord"}
+        <DiscordPage {visible} />
+      {:else if current.id === "startup"}
+        <StartupPage {visible} />
+      {:else if current.id === "about"}
+        <AboutPage />
       {:else}
         <div class="soon">
           <Icon name={current.icon} size={28} />
@@ -253,6 +265,26 @@
     flex: 1;
     overflow-y: auto;
     padding: 10px 24px 24px;
+  }
+  /* Section headings and cards shared by the settings pages. */
+  .content :global(h3) {
+    margin: 22px 2px 10px;
+    font-size: var(--fs-md);
+    font-weight: 700;
+  }
+  .content :global(h3:first-child) {
+    margin-top: 0;
+  }
+  .content :global(.card) {
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .content :global(.note) {
+    margin: 0;
+    padding: 0 16px 14px;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text-3);
   }
   .soon {
     display: grid;

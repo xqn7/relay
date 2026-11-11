@@ -3,6 +3,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fade, scale } from "svelte/transition";
+  import { visual } from "../../lib/stores/visual.svelte";
   import { artistLine, coverAt, proxiedCover } from "../../lib/api";
   import Backdrop from "../../lib/backdrop/Backdrop.svelte";
   import { i18n, t } from "../../lib/i18n/index.svelte";
@@ -11,7 +12,6 @@
   import { livePosition } from "../../lib/lyrics/position.svelte";
   import { lyrics } from "../../lib/stores/lyrics.svelte";
   import { player } from "../../lib/stores/player.svelte";
-  import { settings } from "../../lib/stores/settings.svelte";
 
   const pos = livePosition();
   const track = $derived(player.current?.track ?? null);
@@ -49,7 +49,7 @@
     {#if line}
       {#key active}
         <div class="lines" in:fade={{ duration: 360 }}>
-          <p class="current"><LyricText {line} pos={pos.ms} active style={settings.values.lyricsStyle} /></p>
+          <p class="current"><LyricText {line} pos={pos.ms} active style={visual.lyricsStyle} /></p>
           {#if nextLine}<p class="next">{nextLine.gap ? "♪" : nextLine.text}</p>{/if}
         </div>
       {/key}
@@ -61,7 +61,7 @@
       <div class="art">
         {#each [track] as tr (tr.id)}
           {@const art = tr.cover ?? player.via?.cover ?? null}
-          <div class="art-cell" in:scale={{ start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: 360 }}>
+          <div class="art-cell" in:scale={visual.quality === "low" ? { start: 1, duration: 140, opacity: 0 } : { start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: visual.quality === "low" ? 100 : 360 }}>
             {#if art}<img src={proxiedCover(coverAt(art, 400) ?? art)} alt="" />{/if}
           </div>
         {/each}
