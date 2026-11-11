@@ -11,9 +11,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::windows::named_pipe::{ClientOptions, NamedPipeClient};
 use tokio::sync::watch;
 
-/// Relay's Discord application (its name is what Discord shows as "Listening to …"). Empty
-/// until the application is registered; Rich Presence then reports itself as not set up.
-pub const APP_ID: &str = "";
+/// Relay's Discord application (its name is what Discord shows as "Listening to …"). Public,
+/// not a secret. Empty would mean Rich Presence reports itself as not set up.
+pub const APP_ID: &str = "1570104931858382918";
 const OP_HANDSHAKE: u32 = 0;
 const OP_FRAME: u32 = 1;
 const OP_CLOSE: u32 = 2;
