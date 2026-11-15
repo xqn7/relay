@@ -6,6 +6,7 @@
     .\scripts\release.ps1 -Version 0.2.0 -NotesFile notes.md -Publish
 
   The updater's private key stays outside the repo, in %USERPROFILE%\.relay-keys\.
+  The build goes to %LOCALAPPDATA%\relay-release\, outside the project folder.
 #>
 param(
   [Parameter(Mandatory)] [string] $Version,
@@ -57,9 +58,13 @@ if (-not $SkipTests) {
   Run "Frontend tests" { npm test --silent }
 }
 
+# The real Relay is built outside the project folder, which only ever holds Relay Dev builds.
+$releaseTarget = Join-Path $env:LOCALAPPDATA "relay-release\target"
+$env:CARGO_TARGET_DIR = $releaseTarget
 Run "Build" { npx tauri build }
+Remove-Item Env:CARGO_TARGET_DIR
 
-$nsis = Join-Path $root "src-tauri\target\release\bundle\nsis"
+$nsis = Join-Path $releaseTarget "release\bundle\nsis"
 $setup = Get-ChildItem $nsis -Filter "Relay_${Version}_x64-setup.exe" | Select-Object -First 1
 if (-not $setup) { Fail "Installer not found in $nsis" }
 

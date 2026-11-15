@@ -96,7 +96,7 @@ npm start
 ```
 
 `npm start` runs Relay in development mode with live reload. `npm run app` builds a release
-exe at `src-tauri\target\release\relay.exe`, without an installer.
+exe at `src-tauri\target\release\Relay Dev.exe`, without an installer.
 
 Both run as **Relay Dev** (`src-tauri/tauri.dev.conf.json`), a separate app from the installed
 Relay: its own data folder (`%APPDATA%\app.relay.player.dev`), account, sign-ins and
@@ -118,7 +118,8 @@ cargo clippy --all-targets
 
 `scripts\release.ps1 -Version 1.2.3 -Notes "What changed"` sets the version everywhere, runs the
 tests, builds the installer, signs it for the updater with the key in
-`%USERPROFILE%\.relay-keys\relay-updater.key` and writes `latest.json`. Add `-Publish` to push
+`%USERPROFILE%\.relay-keys\relay-updater.key` and writes `latest.json`, all in
+`%LOCALAPPDATA%\relay-release\` so the project folder only ever holds Relay Dev builds. Add `-Publish` to push
 and create the GitHub release. The private key is never part of the repository; its public half
 is `PUBLIC_KEY` in `src-tauri/src/updater.rs`.
 

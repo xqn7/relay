@@ -1,5 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Relay Dev",
+  "mainBinaryName": "Relay Dev",
   "identifier": "app.relay.player.dev"
 }
