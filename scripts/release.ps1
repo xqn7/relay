@@ -64,7 +64,7 @@ $setup = Get-ChildItem $nsis -Filter "Relay_${Version}_x64-setup.exe" | Select-O
 if (-not $setup) { Fail "Installer not found in $nsis" }
 
 # Signed the way updater.rs checks it (minisign over the installer, Tauri's key format).
-Run "Sign" { npx tauri signer sign -f $keyFile -p "" $setup.FullName }
+Run "Sign" { npx tauri signer sign -f $keyFile "--password=" $setup.FullName }
 $sigFile = "$($setup.FullName).sig"
 if (-not (Test-Path $sigFile)) { Fail "Signature not found: $sigFile" }
 
