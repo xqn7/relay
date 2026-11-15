@@ -35,6 +35,7 @@
     if (c.ok) return t(`connection.ok.${c.id}` as Key);
     if (c.code === "skipped") return t("connection.skipped");
     if (c.id === "youtube" && c.code === "helper_installing") return t("connection.helper");
+    if (c.id === "youtube" && c.code === "signin_required") return t("connection.signin");
     return t(`connection.fail.${c.id}` as Key);
   }
 

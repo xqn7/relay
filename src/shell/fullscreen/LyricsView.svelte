@@ -207,7 +207,7 @@
             style:--d={Math.min(distance, 4)}
             bind:this={lineEls[i]}
             onclick={() => jump(i)}>
-            <LyricText {line} pos={pos.ms} active={i === active} {style} {query} />
+            <LyricText {line} pos={pos.ms} active={i === active} still={!player.playing} {style} {query} />
             {#if translation && line.index >= 0 && translation[line.index]}<span class="tr">{translation[line.index]}</span>{/if}
           </button>
         {/each}

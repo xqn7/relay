@@ -20,7 +20,10 @@
 
   function onKey(e: KeyboardEvent) {
     if (!menu.open) return;
-    if (e.key === "Escape") menu.close();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      menu.close();
+    }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       const buttons = [...(el?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];

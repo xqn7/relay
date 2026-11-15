@@ -210,14 +210,18 @@ class Player {
   /** Adds similar songs to the current song's radio. False when none could be found. */
   private async refillRadio(): Promise<boolean> {
     const seed = this.current?.track;
-    if (!seed || !this.queue.radio || this.autoplayBusy) return false;
+    const radio = this.queue.radio;
+    if (!seed || !radio || this.autoplayBusy) return false;
     this.autoplayBusy = true;
     try {
+      const found = (await api.autoplayTracks(seed)).filter((x) => !library.isHidden(x));
+      // The user may have started something else meanwhile. Moving on inside the same radio
+      // (a song that couldn't play is skipped quickly) still takes the new songs.
+      if (this.queue.radio !== radio) return false;
       const known = new Set(this.queue.items.map((i) => i.track.id));
-      const found = (await api.autoplayTracks(seed)).filter((x) => !known.has(x.id) && !library.isHidden(x)).slice(0, RADIO_BATCH);
-      // The user may have started something else meanwhile.
-      if (!this.queue.radio || this.current?.track.id !== seed.id || found.length === 0) return found.length > 0;
-      this.setQueue(Q.addToQueue(this.queue, found));
+      const fresh = found.filter((x) => !known.has(x.id)).slice(0, RADIO_BATCH);
+      if (fresh.length === 0) return false;
+      this.setQueue(Q.addToQueue(this.queue, fresh));
       return true;
     } catch {
       return false;
@@ -396,6 +400,8 @@ class Player {
     this.durationMs = item.track.durationMs ?? 0;
     api.mediaTrack(mediaInfo(item.track)).catch(() => {});
     this.warmCover(item.track);
+    // Before resolving: a radio must keep its supply up even when this song can't play.
+    this.topUpRadio();
     try {
       const prepared = await this.prepare(item.track);
       if (token !== this.loadToken) return;
@@ -469,6 +475,10 @@ class Player {
     if (next && next.uid !== this.current?.uid) api.prefetchTrack(next.track, settings.values.quality).catch(() => {});
     const imported = this.upcoming.slice(0, PREMATCH_AHEAD).map((x) => x.track).filter((x) => IMPORT_ONLY.has(x.source) && !x.via);
     if (imported.length) api.prematch(imported).catch(() => {});
+    this.topUpRadio();
+  }
+
+  private topUpRadio(): void {
     if (this.queue.radio && this.upcoming.length < RADIO_REFILL_AT && offline.online) this.refillRadio();
   }
 

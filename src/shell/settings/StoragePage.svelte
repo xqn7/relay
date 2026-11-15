@@ -6,7 +6,7 @@
   import Segmented from "../../lib/components/Segmented.svelte";
   import Toggle from "../../lib/components/Toggle.svelte";
   import type { Key } from "../../lib/i18n/en";
-  import { t } from "../../lib/i18n/index.svelte";
+  import { i18n, t } from "../../lib/i18n/index.svelte";
   import { dialogs } from "../../lib/stores/dialogs.svelte";
   import { fail } from "../../lib/stores/library.svelte";
   import { offline } from "../../lib/stores/offline.svelte";
@@ -48,7 +48,7 @@
 
   function songsFor(gb: number): string {
     if (gb === 0 || !usage) return t("storage.noLimitDesc");
-    return t("storage.aboutSongs", { n: Math.floor((gb * 1024 ** 3) / usage.averageSongBytes).toLocaleString() });
+    return t("storage.aboutSongs", { n: Math.floor((gb * 1024 ** 3) / usage.averageSongBytes).toLocaleString(i18n.lang) });
   }
 
   const downloadLine = $derived.by(() => {

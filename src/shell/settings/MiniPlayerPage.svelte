@@ -37,7 +37,9 @@
 
   /** Builds "Ctrl+Alt+K"-style text from a key press. */
   function record(e: KeyboardEvent) {
+    // Caught before anything else on the page: Escape here cancels recording, not Settings.
     e.preventDefault();
+    e.stopPropagation();
     if (e.key === "Escape") {
       recording = false;
       return;
@@ -53,7 +55,7 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => recording && record(e)} />
+<svelte:window onkeydowncapture={(e) => recording && record(e)} />
 
 {#if visible("mini.enable", "mini.enableDesc") || visible("mini.position", "mini.positionDesc") || visible("mini.shortcut", "mini.shortcutDesc") || visible("mini.autoShow", "mini.autoShowDesc") || visible("mini.onTop", "mini.onTopDesc")}
   <h3>{t("settings.page.miniPlayer")}</h3>

@@ -470,6 +470,8 @@ export const en = {
   "connection.copied": "Details copied",
   "connection.skipped": "Not tested, because there's no internet.",
   "connection.helper": "The YouTube player helper is still downloading. Songs play from SoundCloud until it's ready.",
+  "connection.signin":
+    "YouTube search works, but YouTube wants a sign-in before it plays songs on this connection (VPNs often trigger this). Songs play from SoundCloud where possible. Sign in under Settings → YouTube.",
   "connection.name.internet": "Internet",
   "connection.name.youtube": "YouTube",
   "connection.name.soundcloud": "SoundCloud",

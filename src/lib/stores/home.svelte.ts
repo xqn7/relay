@@ -24,7 +24,8 @@ class HomeStore {
   /** Making mixes takes a few seconds; Home and a mix page opening together share one run. */
   loadMixes(): Promise<void> {
     const today = localDay();
-    if (this.mixes && this.mixesDay === today) return Promise.resolve();
+    // No mixes yet is asked again: a few more plays today can be enough for the first ones.
+    if (this.mixes?.length && this.mixesDay === today) return Promise.resolve();
     this.mixesRun ??= this.fetchMixes(today).finally(() => (this.mixesRun = null));
     return this.mixesRun;
   }

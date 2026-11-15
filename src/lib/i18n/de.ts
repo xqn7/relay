@@ -484,6 +484,8 @@ export const de: Record<Key, string> = {
   "connection.ok.covers": "Coverbilder laden.",
   "connection.ok.lyrics": "Der Songtext-Dienst antwortet.",
   "connection.fail.internet": "Dieser PC erreicht das Internet nicht. Prüfe WLAN oder Kabel. Songs auf diesem PC spielen weiter.",
+  "connection.signin":
+    "Die YouTube-Suche geht, aber YouTube will vor dem Abspielen eine Anmeldung über diese Verbindung (passiert oft mit VPN). Songs spielen, wo möglich, von SoundCloud. Anmelden unter Einstellungen → YouTube.",
   "connection.fail.youtube": "YouTube antwortet nicht oder hat etwas geändert. Songs spielen solange von SoundCloud.",
   "connection.fail.soundcloud": "SoundCloud antwortet nicht. Stattdessen spielen YouTube-Versionen.",
   "connection.fail.spotify": "Spotify ist gerade nicht lesbar, Spotify-Links lassen sich nicht importieren. Alles andere funktioniert.",

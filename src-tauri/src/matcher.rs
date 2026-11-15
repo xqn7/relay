@@ -23,7 +23,8 @@ const VERSION_TAGS: &[(&str, &[&str])] = &[
     ("instrumental", &["instrumental"]),
     ("acoustic", &["acoustic", "unplugged"]),
     ("live", &["live"]),
-    ("cover", &["cover"]),
+    ("cover", &["cover", "originally performed", "in the style of", "tribute"]),
+    ("karaoke", &["karaoke"]),
     ("bass boosted", &["bass boosted", "bassboosted"]),
 ];
 
@@ -195,13 +196,16 @@ pub fn best_match<'a>(target: &Track, candidates: &'a [Track]) -> Option<&'a Tra
 }
 
 /// Best candidate and its score. Among near-equal candidates the plain song (audio upload)
-/// wins over a music video of the same recording, which may have an intro or skits.
+/// wins over a music video of the same recording, which may have an intro or skits. A full
+/// tie goes to the candidate the service ranked higher.
 pub fn best_scored<'a>(target: &Track, candidates: &'a [Track]) -> Option<(&'a Track, f32)> {
     let scored: Vec<(f32, &Track)> =
         candidates.iter().filter(|c| c.id != target.id).map(|c| (score(target, c), c)).filter(|(s, _)| *s >= MIN_SCORE).collect();
     let top = scored.iter().map(|(s, _)| *s).fold(f32::MIN, f32::max);
+    // `max_by` keeps the last of equal elements, so walk from the bottom of the ranking.
     scored
         .iter()
+        .rev()
         .filter(|(s, _)| top - *s < 0.08)
         .max_by(|a, b| (!a.1.is_video).cmp(&!b.1.is_video).then(a.0.total_cmp(&b.0)))
         .map(|(s, c)| (*c, *s))
@@ -302,5 +306,21 @@ mod tests {
             t("soundcloud", "3", "Something else", "Other", 145),
         ];
         assert_eq!(best_match(&target, &cands).unwrap().source_id, "2");
+    }
+
+    #[test]
+    fn skips_karaoke_and_tribute_versions() {
+        let target = t("local", "f", "Wake Me Up", "Avicii", 247);
+        let karaoke = t("youtube", "k", "Wake Me up (Originally Performed by Avicii) [Karaoke Version]", "The Karaoke Channel", 245);
+        let tribute = t("youtube", "t", "Wake Me Up (A Tribute to Avicii)", "Double Ignition Trax", 247);
+        assert_eq!(score(&target, &karaoke), 0.0);
+        assert_eq!(score(&target, &tribute), 0.0);
+    }
+
+    #[test]
+    fn equal_scores_keep_the_service_ranking() {
+        let target = t("spotify", "a", "Fever", "Buckshot", 145);
+        let cands = vec![t("youtube", "first", "Fever", "Buckshot", 146), t("youtube", "second", "Fever", "Buckshot", 145)];
+        assert_eq!(best_match(&target, &cands).unwrap().source_id, "first");
     }
 }

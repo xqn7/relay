@@ -13,6 +13,8 @@ use tauri::{Emitter, Manager};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(12);
+/// A video that has stayed up since 2005, used to see whether YouTube hands out streams.
+const CHECK_VIDEO: &str = "jNQXAC9IVRw";
 /// Repeated failures within this window share one probe.
 const PROBE_REUSE: Duration = Duration::from_secs(5);
 /// Windows' own connectivity test page and its exact answer, plus a second opinion.
@@ -165,7 +167,10 @@ pub async fn check_all(state: &Arc<AppState>) -> Vec<Check> {
         if !state.tools.ytdlp_ready() {
             return Err(crate::error::AppError::new("helper_installing", "yt-dlp is still downloading"));
         }
-        state.yt.search_songs("music", false).await.map(|_| ())
+        state.yt.search_songs("music", false).await?;
+        // Search can work while playback is blocked ("confirm you're not a bot", often on
+        // VPN addresses), so also ask for a real stream: YouTube's first video, 19 s long.
+        state.tools.ytdlp_stream(CHECK_VIDEO, crate::sources::Quality::DataSaver).await.map(|_| ())
     });
     let soundcloud = timed(async { state.sc.search("music", SearchKind::Songs).await.map(|_| ()) });
     let spotify = ok_status(state, "https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT");

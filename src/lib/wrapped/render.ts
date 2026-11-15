@@ -143,10 +143,16 @@ export async function renderCard(card: Card, colors: Rgb[], who: { name: string;
 
   if (card.big) {
     font(ctx, 800, 84);
-    ctx.fillText(fit(ctx, card.big, inner), PAD, 300);
+    // Long values ("November 15") break onto a second line, as on the card in the app.
+    const lines = wrap(ctx, card.big, inner, 2);
+    let bigY = 300 - (lines.length - 1) * 40;
+    for (const line of lines) {
+      ctx.fillText(line, PAD, bigY);
+      bigY += 80;
+    }
+    y = bigY - 40;
     font(ctx, 600, 22, 0.8);
-    ctx.fillText(fit(ctx, card.unit ?? "", inner), PAD, 340);
-    y = 340;
+    ctx.fillText(fit(ctx, card.unit ?? "", inner), PAD, y);
   }
 
   card.rows?.forEach((row, i) => {

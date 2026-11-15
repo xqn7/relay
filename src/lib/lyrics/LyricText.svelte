@@ -4,11 +4,20 @@
   import type { LyricsStyle } from "../stores/settings.svelte";
   import { splitMatches, wordProgress, type ShownLine } from "./lines";
 
-  let { line, pos, active, style, query = "" }: { line: ShownLine; pos: number; active: boolean; style: LyricsStyle; query?: string } = $props();
+  // `still`: the music is paused, so the gap note rests instead of breathing (an endless
+  // animation would repaint the window, and the always-on-top desktop lyrics, every frame).
+  let {
+    line,
+    pos,
+    active,
+    style,
+    query = "",
+    still = false,
+  }: { line: ShownLine; pos: number; active: boolean; style: LyricsStyle; query?: string; still?: boolean } = $props();
 </script>
 
 {#if line.gap}
-  <span class="note" class:on={active}>♪</span>
+  <span class="note" class:on={active && !still}>♪</span>
 {:else if query.trim()}
   {#each splitMatches(line.text, query) as part, i (i)}{#if part.hit}<mark>{part.text}</mark>{:else}{part.text}{/if}{/each}
 {:else if active && style !== "fade"}

@@ -81,7 +81,7 @@
 
 <div class="box" class:unlocked role="presentation" onpointerdown={drag}>
   {#if current}
-    <p class="current" use:fit={current.text}><LyricText line={current} {pos} active style={feed?.style ?? "karaoke"} /></p>
+    <p class="current" use:fit={current.text}><LyricText line={current} {pos} active still={!now?.playing} style={feed?.style ?? "karaoke"} /></p>
     {#if next && !next.gap}<p class="next" use:fit={next.text}>{next.text}</p>{/if}
   {:else if unlocked}
     <p class="hint">{t("desktopLyrics.sample")}</p>

@@ -14,7 +14,11 @@
   }: { title: string; sub?: string; width?: number; onclose: () => void; children: Snippet; footer?: Snippet } = $props();
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape") onclose();
+    // Marked as used, so the window under the dialog (Settings) stays open.
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onclose();
+    }
   }
 </script>
 

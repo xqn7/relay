@@ -5,6 +5,8 @@
   import IconButton from "../../lib/components/IconButton.svelte";
   import type { Key } from "../../lib/i18n/en";
   import { t } from "../../lib/i18n/index.svelte";
+  import { dialogs } from "../../lib/stores/dialogs.svelte";
+  import { menu } from "../../lib/stores/menu.svelte";
   import { session } from "../../lib/stores/session.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
   import { pages, type PageId } from "./pages";
@@ -42,7 +44,8 @@
   }
 
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape") ui.settingsOpen = false;
+    // Escape closes only the top layer: a dialog or menu over Settings goes first.
+    if (e.key === "Escape" && !e.defaultPrevented && !dialogs.current && !menu.open) ui.settingsOpen = false;
   }
 </script>
 
