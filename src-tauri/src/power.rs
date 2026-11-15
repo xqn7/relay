@@ -21,7 +21,7 @@ struct Request {
 
 fn create() -> Option<isize> {
     // Shown by `powercfg /requests`, so it says who keeps the PC up and why.
-    let mut reason: Vec<u16> = "Relay is playing music".encode_utf16().chain(Some(0)).collect();
+    let mut reason: Vec<u16> = format!("{} is playing music", crate::app_name()).encode_utf16().chain(Some(0)).collect();
     let context = REASON_CONTEXT {
         Version: POWER_REQUEST_CONTEXT_VERSION,
         Flags: POWER_REQUEST_CONTEXT_SIMPLE_STRING,

@@ -86,7 +86,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let menu = Menu::with_items(app, &[&toggle, &next, &previous, &sep()?, &private, &mini, &lyrics, &sep()?, &show, &quit])?;
     let icon = TrayIconBuilder::with_id("relay")
         .icon(tauri::include_image!("icons/tray.png"))
-        .tooltip("Relay")
+        .tooltip(crate::app_name())
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| on_menu(app, event.id().as_ref()))
@@ -155,7 +155,7 @@ pub fn refresh(app: &AppHandle) {
         .unwrap_or_else(|p| p.into_inner())
         .as_ref()
         .map(|np| tooltip(&np.title, &np.artist))
-        .unwrap_or_else(|| "Relay".into());
+        .unwrap_or_else(|| crate::app_name().into());
     let _ = items._icon.set_tooltip(Some(tip));
 }
 

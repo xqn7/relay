@@ -1,6 +1,7 @@
 <!-- Wrapped: full-screen cards for a month or a year of listening. Arrows or the arrow keys
      move between cards; "Save image" writes the card as a PNG to share. -->
 <script lang="ts">
+  import { APP_NAME } from "../../lib/brand";
   import { fade, fly } from "svelte/transition";
   import { api, type Stats } from "../../lib/api";
   import { neutralColors, type Rgb } from "../../lib/backdrop/colors";
@@ -144,7 +145,7 @@
             <footer>
               <Avatar src={avatar} {name} size={28} />
               <span class="truncate">{name}</span>
-              <b>Relay</b>
+              <b>{APP_NAME}</b>
             </footer>
           </div>
         {/key}

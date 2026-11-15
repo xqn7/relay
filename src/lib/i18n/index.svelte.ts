@@ -1,4 +1,5 @@
 import { en, type Key } from "./en";
+import { DEV_BUILD } from "../brand";
 import { pickPlural } from "./plural";
 
 // Adding a language: create xx.ts with every key (TypeScript enforces it), then add it to
@@ -74,6 +75,8 @@ export function t(key: Key, vars?: Record<string, string | number>): string {
   const lang = own ? current : "en";
   let text: string = own ?? en[key];
   if (text.includes("|") && typeof vars?.n === "number") text = pickPlural(lang, text.split("|"), vars.n);
+  // Texts name the app as "Relay"; the dev build says "Relay Dev" everywhere, in every language.
+  if (DEV_BUILD) text = text.replace(/\bRelay\b/g, "Relay Dev");
   if (vars) {
     for (const [name, value] of Object.entries(vars)) text = text.replaceAll(`{${name}}`, String(value));
   }

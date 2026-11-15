@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { APP_NAME } from "../lib/brand";
   import { fade } from "svelte/transition";
   import { api, isAppError, type Account } from "../lib/api";
   import logo from "../lib/assets/logo.svg";
@@ -127,7 +128,7 @@
   <div class="card" in:fade={{ duration: 220 }}>
     <section class="brand">
       <svg class="giant" viewBox="0 0 100 100" aria-hidden="true"><path d="M24 58a26 26 0 0 1 52 0z" /><rect x="14" y="64" width="72" height="7" rx="3.5" /></svg>
-      <div class="logo"><img src={logo} alt="" width="26" height="26" /><span>Relay</span></div>
+      <div class="logo"><img src={logo} alt="" width="26" height="26" /><span>{APP_NAME}</span></div>
       <div class="lang">
         <button class="lang-btn" aria-haspopup="listbox" aria-expanded={langOpen} onclick={() => (langOpen = !langOpen)}>
           <Icon name="globe" size={14} />{langName(i18n.lang)}<Icon name="chevronDown" size={14} />

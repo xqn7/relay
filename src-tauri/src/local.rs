@@ -132,7 +132,7 @@ impl LocalMusic {
                 .audio_dir()
                 .or_else(|_| app.path().home_dir().map(|h| h.join("Music")))
                 .map_err(|e| AppError::new("io", e.to_string()))?
-                .join("Relay")
+                .join(crate::app_name())
                 .join("Local music"),
         };
         let art_dir = data.join("local-art");

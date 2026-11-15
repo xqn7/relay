@@ -585,8 +585,6 @@ export interface DesktopInfo {
   lyricsUnlocked: boolean;
   discord: "off" | "waiting" | "connected";
   version: string;
-  /** Relay Dev, the build from the project folder: separate data, no self-updating. */
-  dev: boolean;
 }
 
 export interface UiLabels {

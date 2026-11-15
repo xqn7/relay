@@ -97,7 +97,7 @@ fn build(app: &AppHandle, label: &'static str) -> tauri::Result<WebviewWindow> {
     let blur = mini && is_windows_11();
     let url = format!("overlay.html?w={label}{}", if blur { "&blur=1" } else { "" });
     let mut builder = WebviewWindowBuilder::new(app, label, WebviewUrl::App(url.into()))
-        .title(if mini { "Relay mini player" } else { "Relay lyrics" })
+        .title(format!("{} {}", crate::app_name(), if mini { "mini player" } else { "lyrics" }))
         .inner_size(w, h)
         .decorations(false)
         .transparent(true)

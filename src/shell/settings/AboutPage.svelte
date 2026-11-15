@@ -1,5 +1,6 @@
 <!-- Settings → About: version and updates (Relay itself and the YouTube helper, yt-dlp). -->
 <script lang="ts">
+  import { APP_NAME, DEV_BUILD } from "../../lib/brand";
   import { onMount } from "svelte";
   import { api, isAppError } from "../../lib/api";
   import logo from "../../lib/assets/logo.svg";
@@ -18,7 +19,6 @@
   ] as const;
 
   let version = $state("");
-  let dev = $state(false);
   let appBusy = $state(false);
   let appStatus = $state("");
   // undefined while yt-dlp is still being asked (it takes a second or two to answer).
@@ -27,7 +27,7 @@
   let ytdlpStatus = $state("");
 
   onMount(() => {
-    api.desktopInfo().then((i) => ((version = i.version), (dev = i.dev))).catch(() => {});
+    api.desktopInfo().then((i) => (version = i.version)).catch(() => {});
     api.ytdlpVersion().then((v) => (ytdlp = v)).catch(() => (ytdlp = null));
   });
 
@@ -64,14 +64,14 @@
 <div class="head">
   <img class="logo-mark" src={logo} alt="" width="56" height="56" />
   <div>
-    <h3>{dev ? "Relay Dev" : "Relay"}</h3>
+    <h3>{APP_NAME}</h3>
     {#if version}<p>{t("about.version", { version })}</p>{/if}
   </div>
 </div>
 
 <h3>{t("about.updates")}</h3>
 <div class="card">
-  {#if dev}
+  {#if DEV_BUILD}
     <SettingRow label={t("about.app")} desc={t("about.devUpdates")} />
   {:else if desktop.update}
     <SettingRow label={t("update.readyShort", { version: desktop.update.version })} desc={t("update.sub")}>

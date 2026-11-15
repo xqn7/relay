@@ -2,6 +2,7 @@
 // 540 × 675 grid as the card on screen, at twice the size.
 import { coverAt, proxiedCover } from "../api";
 import type { Rgb } from "../backdrop/colors";
+import { APP_NAME } from "../brand";
 import type { Card } from "./cards";
 
 export const CARD_W = 540;
@@ -184,7 +185,7 @@ export async function renderCard(card: Card, colors: Rgb[], who: { name: string;
   font(ctx, 600, 15);
   ctx.fillText(fit(ctx, who.name, inner - 120), PAD + 38, footY + 19);
   font(ctx, 700, 15, 0.62);
-  const brand = "Relay";
+  const brand = APP_NAME;
   ctx.fillText(brand, CARD_W - PAD - ctx.measureText(brand).width, footY + 19);
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));

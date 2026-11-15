@@ -21,8 +21,6 @@ pub struct DesktopInfo {
     /// "unset" (no Discord application yet), "off", "waiting" (Discord not running), "connected".
     discord: &'static str,
     version: String,
-    /// This is Relay Dev, the build from the project folder.
-    dev: bool,
 }
 
 #[tauri::command]
@@ -41,7 +39,6 @@ pub fn desktop_info(state: St) -> DesktopInfo {
         lyrics_unlocked: overlays::lyrics_unlocked(&state),
         discord,
         version: state.app.package_info().version.to_string(),
-        dev: crate::is_dev(),
     }
 }
 

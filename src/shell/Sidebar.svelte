@@ -1,11 +1,11 @@
 <script lang="ts">
   import logo from "../lib/assets/logo.svg";
+  import { APP_NAME, DEV_BUILD } from "../lib/brand";
   import Avatar from "../lib/components/Avatar.svelte";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import { t } from "../lib/i18n/index.svelte";
   import { newFolder, newPlaylist, openFolderMenu, openPlaylistMenu } from "../lib/playlistMenu";
-  import { desktop } from "../lib/stores/desktop.svelte";
   import { dialogs } from "../lib/stores/dialogs.svelte";
   import { dnd, dropTarget, type Payload } from "../lib/stores/dnd.svelte";
   import { library } from "../lib/stores/library.svelte";
@@ -65,7 +65,7 @@
 </script>
 
 <nav class="sidebar">
-  <div class="logo" data-tauri-drag-region><img class="logo-mark" src={logo} alt="Relay" width="30" height="30" draggable="false" />{#if desktop.info?.dev}<span class="dev">Dev</span>{/if}</div>
+  <div class="logo" data-tauri-drag-region><img class="logo-mark" src={logo} alt={APP_NAME} width="30" height="30" draggable="false" />{#if DEV_BUILD}<span class="dev">Dev</span>{/if}</div>
   <div class="rail">
     <button class:active={isRoute("home")} aria-label={t("nav.home")} title={t("nav.home")} onclick={() => ui.open({ name: "home" })}>
       <Icon name="home" size={20} />
