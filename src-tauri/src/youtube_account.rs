@@ -152,6 +152,7 @@ pub fn open_login(app: &AppHandle) -> AppResult<()> {
         .inner_size(480.0, 680.0)
         .center()
         .incognito(true)
+        .additional_browser_args(crate::BROWSER_ARGS)
         // Only Google's and YouTube's own pages; nothing else opens in this window.
         .on_navigation(|url| url.scheme() == "https")
         .on_page_load(|window, payload| {

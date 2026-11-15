@@ -292,11 +292,10 @@ pub async fn best(state: &AppState, url: &str) -> AppResult<(Arc<Vec<u8>>, Strin
 
 /// "Save image": the cover at full resolution, to a file the user picks.
 pub async fn save(app: &tauri::AppHandle, state: &AppState, url: &str, name: &str) -> AppResult<bool> {
-    use tauri_plugin_dialog::DialogExt;
     let (bytes, mime) = best(state, url).await?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     let ext = ext_for(&mime);
-    app.dialog().file().set_file_name(file_name(name, &mime)).add_filter("Image", &[ext]).save_file(move |p| {
+    crate::util::file_dialog(&app).set_file_name(file_name(name, &mime)).add_filter("Image", &[ext]).save_file(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(path)) = rx.await.ok() else { return Ok(false) };

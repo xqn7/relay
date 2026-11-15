@@ -17,7 +17,6 @@ use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use tauri::ipc::{InvokeBody, Request};
 use tauri::Emitter;
-use tauri_plugin_dialog::DialogExt;
 
 const RECENT_LIMIT: usize = 20;
 const MOST_LIMIT: usize = 20;
@@ -148,7 +147,7 @@ pub async fn image_save(app: tauri::AppHandle, request: Request<'_>) -> AppResul
     // Headers are ASCII, so the name comes percent-encoded.
     let name = format!("{}.png", safe_file_stem(&crate::streams::percent_decode(header(&request, "name")), "Relay"));
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().set_file_name(name).add_filter("PNG", &["png"]).save_file(move |p| {
+    crate::util::file_dialog(&app).set_file_name(name).add_filter("PNG", &["png"]).save_file(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(path)) = rx.await.ok() else { return Ok(false) };

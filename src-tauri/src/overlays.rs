@@ -10,8 +10,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE,
-    SWP_NOSIZE, SWP_SHOWWINDOW, WS_EX_TOOLWINDOW,
+    GetWindowLongPtrW, IsWindowVisible, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HWND_NOTOPMOST, HWND_TOPMOST,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, SWP_SHOWWINDOW, SW_HIDE, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
 };
 
 pub const MINI: &str = "mini";
@@ -105,6 +105,7 @@ fn build(app: &AppHandle, label: &'static str) -> tauri::Result<WebviewWindow> {
         .focusable(false)
         .focused(false)
         .visible(false)
+        .additional_browser_args(crate::BROWSER_ARGS)
         .on_navigation(crate::is_app_url);
     if !mini {
         builder = builder.min_inner_size(LYRICS_MIN.0, LYRICS_MIN.1);
@@ -127,7 +128,7 @@ fn build(app: &AppHandle, label: &'static str) -> tauri::Result<WebviewWindow> {
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             if let Some(w) = app.get_webview_window(label) {
-                let _ = w.hide();
+                hide(&w);
             }
         }
         WindowEvent::Moved(_) | WindowEvent::Resized(_) => remember_later(&app, label),
@@ -136,13 +137,63 @@ fn build(app: &AppHandle, label: &'static str) -> tauri::Result<WebviewWindow> {
     Ok(window)
 }
 
-/// Keeps the window out of Alt+Tab.
-fn tool_window(hwnd: HWND) {
+// After creation, overlays are only changed through Win32: Tauri's runtime keeps its own copy
+// of the window's state (hidden, since it was never shown through Tauri, which would take focus)
+// and writes it back on many calls (resize, click-through, always on top), hiding the window.
+
+fn ex_style(hwnd: HWND, set: u32, clear: u32) {
     // SAFETY: reading and updating the extended style of our own window.
     unsafe {
-        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex | WS_EX_TOOLWINDOW.0 as isize);
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+        SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ((ex | set) & !clear) as isize);
     }
+}
+
+/// Unlocked desktop lyrics take the mouse; locked ones let every click through.
+fn set_click_through(window: &WebviewWindow, on: bool) {
+    let Ok(hwnd) = window.hwnd() else { return };
+    let bits = (WS_EX_TRANSPARENT | WS_EX_LAYERED).0;
+    if on {
+        ex_style(hwnd, bits, 0);
+    } else {
+        ex_style(hwnd, 0, bits);
+    }
+}
+
+fn is_shown(window: &WebviewWindow) -> bool {
+    // SAFETY: a read-only query about our own window.
+    window.hwnd().is_ok_and(|h| unsafe { IsWindowVisible(h) }.as_bool())
+}
+
+fn hide(window: &WebviewWindow) {
+    if let Ok(hwnd) = window.hwnd() {
+        // SAFETY: hides our own window.
+        let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
+    }
+}
+
+/// Moves (and optionally resizes) without touching z-order or focus.
+fn set_bounds(window: &WebviewWindow, x: i32, y: i32, size: Option<(i32, i32)>) {
+    let Ok(hwnd) = window.hwnd() else { return };
+    let (w, h, keep) = match size {
+        Some((w, h)) => (w, h, SWP_NOACTIVATE | SWP_NOZORDER),
+        None => (0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE),
+    };
+    // SAFETY: repositions our own window.
+    let _ = unsafe { SetWindowPos(hwnd, None, x, y, w, h, keep) };
+}
+
+/// Always on top (or not), without showing or activating.
+fn set_on_top(window: &WebviewWindow, on_top: bool) {
+    let Ok(hwnd) = window.hwnd() else { return };
+    let after = if on_top { HWND_TOPMOST } else { HWND_NOTOPMOST };
+    // SAFETY: changes only our own window's z-order.
+    let _ = unsafe { SetWindowPos(hwnd, Some(after), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE) };
+}
+
+/// Keeps the window out of Alt+Tab.
+fn tool_window(hwnd: HWND) {
+    ex_style(hwnd, WS_EX_TOOLWINDOW.0, 0);
 }
 
 fn round_corners(hwnd: HWND) {
@@ -159,11 +210,12 @@ fn is_windows_11() -> bool {
     build.and_then(|b| b.parse::<u32>().ok()).is_some_and(|b| b >= 22000)
 }
 
-/// Shows without activating, and puts it back on top (a game may have gone topmost since).
+/// Shows without taking focus, so a fullscreen game stays in front and fullscreen, and puts it
+/// back on top, since a game may have gone topmost since.
 fn show_quietly(window: &WebviewWindow, on_top: bool) {
     let Ok(hwnd) = window.hwnd() else { return };
     let after = if on_top { HWND_TOPMOST } else { HWND_NOTOPMOST };
-    // SAFETY: repositions our own window in the z-order; no size or position change.
+    // SAFETY: shows our own window and sets its z-order; no size, position or focus change.
     let _ = unsafe { SetWindowPos(hwnd, Some(after), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW) };
 }
 
@@ -200,27 +252,29 @@ fn place(app: &AppHandle, window: &WebviewWindow, label: &str) {
             }
         }
     } else {
-        let size = custom
+        let (w, h) = custom
             .as_ref()
             .filter(|v| v.len() == 4 && v[2] > 0 && v[3] > 0)
-            .map(|v| PhysicalSize::new(v[2] as u32, v[3] as u32))
-            .unwrap_or_else(|| PhysicalSize::new((LYRICS_SIZE.0 * scale) as u32, (LYRICS_SIZE.1 * scale) as u32));
-        let _ = window.set_size(size);
-        match custom {
+            .map(|v| (v[2], v[3]))
+            .unwrap_or(((LYRICS_SIZE.0 * scale) as i32, (LYRICS_SIZE.1 * scale) as i32));
+        let (x, y) = match custom {
             Some(v) => (v[0], v[1]),
             None => {
-                let x = preset_x("center", origin.x, area.width as i32, size.width as i32, 0);
+                let x = preset_x("center", origin.x, area.width as i32, w, 0);
                 let y = if pref_str(&st, "lyricsPosition", "bottom") == "top" {
                     origin.y + (EDGE_GAP * 4.0 * scale) as i32
                 } else {
-                    origin.y + area.height as i32 - size.height as i32 - (LYRICS_BOTTOM_GAP * scale) as i32
+                    origin.y + area.height as i32 - h - (LYRICS_BOTTOM_GAP * scale) as i32
                 };
                 (x, y)
             }
-        }
+        };
+        st.desktop.overlays.placed.lock().unwrap_or_else(|p| p.into_inner())[slot(label)] = Some((x, y));
+        set_bounds(window, x, y, Some((w, h)));
+        return;
     };
     st.desktop.overlays.placed.lock().unwrap_or_else(|p| p.into_inner())[slot(label)] = Some((x, y));
-    let _ = window.set_position(PhysicalPosition::new(x, y));
+    set_bounds(window, x, y, None);
 }
 
 /// After the user drags (or resizes) an overlay, its spot is saved once it settles.
@@ -275,7 +329,7 @@ fn show_mini_now(app: &AppHandle) {
         return;
     }
     let Some(w) = get_or_build(app, MINI) else { return };
-    if !w.is_visible().unwrap_or(false) {
+    if !is_shown(&w) {
         place(app, &w, MINI);
     }
     show_quietly(&w, pref_bool(&st, "miniOnTop", true));
@@ -284,13 +338,13 @@ fn show_mini_now(app: &AppHandle) {
 fn hide_mini_now(app: &AppHandle) {
     state(app).desktop.overlays.mini_auto.store(false, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(MINI) {
-        let _ = w.hide();
+        hide(&w);
     }
 }
 
 /// The global shortcut and the tray: show if hidden, hide if shown.
 fn toggle_mini_now(app: &AppHandle) {
-    let visible = app.get_webview_window(MINI).is_some_and(|w| w.is_visible().unwrap_or(false));
+    let visible = app.get_webview_window(MINI).is_some_and(|w| is_shown(&w));
     if visible {
         hide_mini_now(app);
     } else {
@@ -305,7 +359,7 @@ fn main_minimized_now(app: &AppHandle, minimized: bool) {
     let st = state(app);
     let overlays = &st.desktop.overlays;
     if minimized {
-        let visible = app.get_webview_window(MINI).is_some_and(|w| w.is_visible().unwrap_or(false));
+        let visible = app.get_webview_window(MINI).is_some_and(|w| is_shown(&w));
         if !visible && pref_bool(&st, "miniAutoShow", false) && mini_enabled(&st) {
             overlays.mini_auto.store(true, Ordering::SeqCst);
             show_mini_now(app);
@@ -326,8 +380,8 @@ fn apply_mini_settings_now(app: &AppHandle) {
     }
     if let Some(w) = app.get_webview_window(MINI) {
         let on_top = pref_bool(&st, "miniOnTop", true);
-        let _ = w.set_always_on_top(on_top);
-        if w.is_visible().unwrap_or(false) {
+        set_on_top(&w, on_top);
+        if is_shown(&w) {
             place(app, &w, MINI);
             show_quietly(&w, on_top);
         }
@@ -349,7 +403,7 @@ fn sync_lyrics_now(app: &AppHandle) {
     }
     let Some(w) = get_or_build(app, LYRICS) else { return };
     place(app, &w, LYRICS);
-    let _ = w.set_ignore_cursor_events(!lyrics_unlocked(&st));
+    set_click_through(&w, !lyrics_unlocked(&st));
     show_quietly(&w, true);
     crate::tray::refresh(app);
 }
@@ -365,7 +419,7 @@ fn set_lyrics_unlocked_now(app: &AppHandle, unlocked: bool) {
     let unlocked = unlocked && pref_bool(&st, "desktopLyrics", false);
     st.desktop.overlays.lyrics_unlocked.store(unlocked, Ordering::SeqCst);
     if let Some(w) = app.get_webview_window(LYRICS) {
-        let _ = w.set_ignore_cursor_events(!unlocked);
+        set_click_through(&w, !unlocked);
     }
     let _ = app.emit("lyrics-unlocked", unlocked);
     crate::tray::refresh(app);

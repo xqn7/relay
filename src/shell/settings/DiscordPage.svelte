@@ -203,7 +203,8 @@
     font-size: var(--fs-xs);
     color: var(--text-3);
   }
-  .top {
+  /* Beats the shared .note padding, which leaves no room above the first line of a card. */
+  .card .top {
     padding-top: 14px;
   }
 </style>

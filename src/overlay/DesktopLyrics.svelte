@@ -5,7 +5,7 @@
   import { emit, listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import Icon from "../lib/components/Icon.svelte";
   import { LYRICS_EVENT, NOW_EVENT, READY_EVENT, positionNow, type LyricsFeed, type NowFeed } from "../lib/desktop/feed";
   import { t } from "../lib/i18n/index.svelte";
@@ -38,6 +38,27 @@
     return () => cancelAnimationFrame(raf);
   });
 
+  /** A line wider than the window gets smaller type instead of losing its last words. */
+  const SMALLEST = 0.6;
+
+  function fit(el: HTMLElement, _text: string) {
+    const apply = () => {
+      el.style.fontSize = "";
+      const least = parseFloat(getComputedStyle(el).fontSize) * SMALLEST;
+      let size = least / SMALLEST;
+      // Text doesn't narrow exactly in step with its size, so further passes take up the rest.
+      // Two pixels of slack: widths are whole numbers, and a line one pixel over still gets cut.
+      for (let pass = 0; pass < 3 && size > least && el.scrollWidth > el.clientWidth; pass++) {
+        size = Math.max((size * (el.clientWidth - 2)) / el.scrollWidth, least);
+        el.style.fontSize = `${size}px`;
+      }
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    // The new line's text reaches the page after this is told about it, so measuring waits for it.
+    return { update: () => void tick().then(apply), destroy: () => window.removeEventListener("resize", apply) };
+  }
+
   function drag(e: PointerEvent) {
     if (!unlocked || e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
     getCurrentWindow().startDragging().catch(() => {});
@@ -60,8 +81,8 @@
 
 <div class="box" class:unlocked role="presentation" onpointerdown={drag}>
   {#if current}
-    <p class="current"><LyricText line={current} {pos} active style={feed?.style ?? "karaoke"} /></p>
-    {#if next && !next.gap}<p class="next">{next.text}</p>{/if}
+    <p class="current" use:fit={current.text}><LyricText line={current} {pos} active style={feed?.style ?? "karaoke"} /></p>
+    {#if next && !next.gap}<p class="next" use:fit={next.text}>{next.text}</p>{/if}
   {:else if unlocked}
     <p class="hint">{t("desktopLyrics.sample")}</p>
   {/if}

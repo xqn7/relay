@@ -76,7 +76,7 @@
       <div class="names">
         <span class="kind">{t("profile.kind")}</span>
         <h1>{account.displayName}</h1>
-        <div class="email">{account.email}{#if since} · {t("profile.since", { date: since })}{/if}</div>
+        <div class="email">{account.email}{since ? ` · ${t("profile.since", { date: since })}` : ""}</div>
       </div>
       <Button variant="secondary" icon="pencil" onclick={editMenu}>{t("profile.edit")}</Button>
     </div>

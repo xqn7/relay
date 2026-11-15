@@ -47,8 +47,10 @@
 
   function key(e: KeyboardEvent) {
     const step = e.shiftKey ? 0.1 : 0.02;
-    if (e.key === "ArrowRight" || e.key === "ArrowUp") onchange?.(Math.min(1, shown + step));
-    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") onchange?.(Math.max(0, shown - step));
+    // Sliders that only listen while dragging still have to follow the arrow keys.
+    const set = onchange ?? oninput;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") set?.(Math.min(1, shown + step));
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") set?.(Math.max(0, shown - step));
     else return;
     e.preventDefault();
   }

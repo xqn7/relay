@@ -12,6 +12,7 @@
   import { mixMenu } from "../lib/mixMenu";
   import { history } from "../lib/stores/history.svelte";
   import { home } from "../lib/stores/home.svelte";
+  import { library } from "../lib/stores/library.svelte";
   import { offline } from "../lib/stores/offline.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { speedDial } from "../lib/stores/speedDial.svelte";
@@ -43,6 +44,8 @@
   const lists = $derived(home.lists);
   const recent = $derived(offline.playable(lists?.recent ?? [], (x) => x));
   const most = $derived(offline.playable(lists?.most ?? [], (x) => x.track).slice(0, MOST_SHOWN));
+  // Suggestions are kept for an hour; artists followed since then drop out right away.
+  const suggested = $derived((home.suggestions ?? []).filter((s) => !library.isFollowing(s.artist.source, s.artist.id)).slice(0, 10));
   const nothingYet = $derived(lists !== null && lists.recent.length === 0);
 
   function mixCovers(m: Mix): (string | null)[] {
@@ -103,9 +106,9 @@
       </section>
     {/if}
 
-    {#if offline.online && home.suggestions?.length}
+    {#if offline.online && suggested.length}
       <Shelf title={t("discover.shelf")} action={{ label: t("home.showAll"), run: () => ui.open({ name: "discover" }) }}>
-        {#each home.suggestions.slice(0, 10) as s (s.artist.source + s.artist.id)}
+        {#each suggested as s (s.artist.source + s.artist.id)}
           <Tile
             title={s.artist.name}
             subtitle={t("discover.because", { name: s.because })}

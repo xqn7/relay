@@ -65,8 +65,7 @@
     {#if visual.hardware}
       {@const hw = visual.hardware}
       <p class="note">
-        <span class="badge">{t("quality.recommended")}</span>
-        {t("quality.recommendation", { level: t(`quality.${hw.recommended.quality}`) })}
+        <span class="badge">{t("quality.recommended", { level: t(`quality.${hw.recommended.quality}`) })}</span>
         {t(`quality.reason.${hw.recommended.reason}`, { ram: hw.hardware.ramGb, cores: hw.hardware.cores, w: hw.hardware.width, h: hw.hardware.height })}
         <button class="link" onclick={() => dialogs.open({ kind: "hardware", info: hw })}>{t("quality.details")}</button>
       </p>

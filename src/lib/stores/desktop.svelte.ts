@@ -170,7 +170,11 @@ class DesktopStore {
     if (track.id === this.lockTrackId) return;
     this.lockTrackId = track.id;
     const seq = ++this.lockSeq;
-    renderLockArt(track.title, artistLine(track), track.cover)
+    // The lock screen is big: the HD cover (looked up and cached since Phase 3) where there is one.
+    api
+      .coverHd(track)
+      .catch(() => null)
+      .then((hd) => renderLockArt(track.title, artistLine(track), hd ?? track.cover))
       .then((png) => (seq === this.lockSeq ? api.lockscreenSet(png) : null))
       .then((r) => {
         if (r?.spotlight) ui.toast(t("lockscreen.spotlight"), "info");
@@ -241,11 +245,11 @@ function labels() {
     previous: t("player.previous"),
     privateSession: t("tray.private"),
     miniPlayer: t("tray.miniPlayer"),
-    unlockLyrics: t("desktopLyrics.unlock"),
-    lockLyrics: t("desktopLyrics.lock"),
+    unlockLyrics: t("tray.unlockLyrics"),
+    lockLyrics: t("tray.lockLyrics"),
     show: t("tray.show"),
     quit: t("tray.quit"),
-    paused: t("discord.paused"),
+    paused: t("discord.pausedMark"),
     listenYoutube: t("discord.listenYoutube"),
     listenSoundcloud: t("discord.listenSoundcloud"),
     listenSpotify: t("discord.listenSpotify"),

@@ -268,6 +268,8 @@
   }
   ol {
     display: grid;
+    /* Without this a long title widens the row past the card instead of being cut. */
+    grid-template-columns: minmax(0, 1fr);
     gap: 24px;
     margin: 26px 0 0;
     padding: 0;

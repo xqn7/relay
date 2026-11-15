@@ -504,6 +504,8 @@ pub async fn edit(state: &Arc<AppState>, source_id: &str, title: &str, artist: &
     })
     .await
     .map_err(|e| AppError::new("internal", e.to_string()))??;
+    // A sharper cover is searched by title and artist, so an answer for the old ones no longer counts.
+    state.db.with(|c| c.execute("DELETE FROM hd_covers WHERE track_id=?1", [Track::make_id(LOCAL, source_id)]))?;
     scan(state).await
 }
 

@@ -22,8 +22,10 @@ class MenuStore {
     e.preventDefault();
     e.stopPropagation();
     this.items = items;
-    this.x = e.clientX;
-    this.y = e.clientY;
+    // A "⋮" button pressed with the keyboard reports no position; the menu opens under it then.
+    const box = e.clientX === 0 && e.clientY === 0 && e.target instanceof Element ? e.target.getBoundingClientRect() : null;
+    this.x = box ? box.left : e.clientX;
+    this.y = box ? box.bottom + 4 : e.clientY;
     this.open = true;
   }
 

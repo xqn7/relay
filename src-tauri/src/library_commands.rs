@@ -11,7 +11,6 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri_plugin_dialog::DialogExt;
 
 const MAX_BATCH: usize = 10_000;
 const ARTIST_CACHE_TTL: Duration = Duration::from_secs(30 * 60);
@@ -370,7 +369,7 @@ pub async fn export_m3u(app: tauri::AppHandle, state: St<'_>, id: String) -> App
     let detail = library::playlist_detail(&state.db, &current(&state)?.id, &id)?;
     let safe: String = detail.playlist.name.chars().map(|c| if r#"\/:*?"<>|"#.contains(c) { '_' } else { c }).collect();
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().set_file_name(format!("{safe}.m3u8")).add_filter("M3U8", &["m3u8"]).save_file(move |p| {
+    crate::util::file_dialog(&app).set_file_name(format!("{safe}.m3u8")).add_filter("M3U8", &["m3u8"]).save_file(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(path)) = rx.await.ok() else { return Ok(false) };
@@ -436,7 +435,7 @@ pub async fn local_add_dialog(app: tauri::AppHandle, state: St<'_>) -> AppResult
     current(&state)?;
     let exts: Vec<&str> = local::AUDIO_EXTS.iter().chain(local::VIDEO_EXTS).copied().collect();
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().add_filter("Music and video", &exts).pick_files(move |p| {
+    crate::util::file_dialog(&app).add_filter("Music and video", &exts).pick_files(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(files)) = rx.await.ok() else { return Ok(false) };
@@ -474,7 +473,7 @@ pub fn local_folder(state: St) -> String {
 #[tauri::command]
 pub async fn local_folder_pick(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<String>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |p| {
+    crate::util::file_dialog(&app).pick_folder(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(dir)) = rx.await.ok() else { return Ok(None) };
@@ -493,7 +492,7 @@ pub fn local_open_folder(state: St) -> AppResult<()> {
 
 async fn pick_file(app: &tauri::AppHandle, label: &str, exts: &[&str]) -> AppResult<Option<PathBuf>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().add_filter(label, exts).pick_file(move |p| {
+    crate::util::file_dialog(&app).add_filter(label, exts).pick_file(move |p| {
         let _ = tx.send(p);
     });
     match rx.await.ok().flatten() {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { backgrounds } from "../stores/backgrounds.svelte";
+  import { player } from "../stores/player.svelte";
   import { settings, type BackgroundPlace } from "../stores/settings.svelte";
   import { visual } from "../stores/visual.svelte";
   import BackgroundImage from "./BackgroundImage.svelte";
@@ -39,6 +40,7 @@
 <div
   class="backdrop"
   class:full
+  class:resting={!player.playing}
   aria-hidden="true"
   style:--bd-1={rgba(colors[0], 0.9)}
   style:--bd-2={rgba(colors[1] ?? colors[0], 0.75)}
@@ -119,6 +121,11 @@
     to {
       transform: translate(-10vw, 4vh) scale(1.1);
     }
+  }
+  /* A moving backdrop makes every glass panel above it re-blur each frame; with the music
+     paused it holds still so a paused Relay costs no CPU. */
+  .resting .blob {
+    animation-play-state: paused;
   }
   /* Low quality: the colors stay, the drift stops. */
   :global(html[data-quality="low"]) .blob {

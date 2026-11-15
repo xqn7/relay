@@ -157,7 +157,8 @@ export async function renderCard(card: Card, colors: Rgb[], who: { name: string;
     ctx.fillText(row.value, CARD_W - PAD - valueW, top + 36);
     const textW = inner - 76 - valueW - 16;
     font(ctx, 600, 18);
-    ctx.fillText(fit(ctx, row.title, textW), PAD + 76, top + 26);
+    // A row without a second line keeps its title level with the cover's middle.
+    ctx.fillText(fit(ctx, row.title, textW), PAD + 76, top + (row.sub ? 26 : 36));
     font(ctx, 400, 15, 0.62);
     ctx.fillText(fit(ctx, row.sub, textW), PAD + 76, top + 48);
   });

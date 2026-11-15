@@ -83,3 +83,14 @@ mod tests {
         assert_eq!(encode_query("ы"), "%D1%8B");
     }
 }
+
+/// A file dialog owned by the main window, so it opens over Relay and can't end up behind it.
+pub fn file_dialog(app: &tauri::AppHandle) -> tauri_plugin_dialog::FileDialogBuilder<tauri::Wry> {
+    use tauri::Manager;
+    use tauri_plugin_dialog::DialogExt;
+    let dialog = app.dialog().file();
+    match app.get_webview_window("main") {
+        Some(window) => dialog.set_parent(&window),
+        None => dialog,
+    }
+}

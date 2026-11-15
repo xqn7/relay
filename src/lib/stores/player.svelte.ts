@@ -197,7 +197,9 @@ class Player {
 
   /** Plays the song, then keeps the queue filled with similar songs (radio mode). */
   async startRadio(track: Track): Promise<void> {
-    this.playTracks([track]);
+    // Radio from the song that's already on keeps it playing instead of starting it over.
+    if (this.current?.track.id === track.id) this.setQueue(Q.clearUpcoming(this.queue));
+    else this.playTracks([track]);
     this.setQueue(Q.startRadio(this.queue, track.title));
     const uid = this.current?.uid;
     if (await this.refillRadio()) {

@@ -35,9 +35,8 @@ struct ExportProgress {
 }
 
 /// Asks for the target folder, starting where the last export went.
-pub async fn pick_folder(app: &tauri::AppHandle, state: &AppState) -> AppResult<Option<PathBuf>> {
-    use tauri_plugin_dialog::DialogExt;
-    let mut dialog = app.dialog().file();
+pub async fn pick_folder(app: &tauri::AppHandle, state: &AppState) -> AppResult<Option<PathBuf>> {
+    let mut dialog = crate::util::file_dialog(app);
     if let Some(last) = state.db.device_get(FOLDER_KEY)?.map(PathBuf::from).filter(|p| p.is_dir()) {
         dialog = dialog.set_directory(last);
     }

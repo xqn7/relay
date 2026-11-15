@@ -9,7 +9,6 @@ use crate::storage::{self, Available, DownloadStatus, OfflineLists, Usage};
 use crate::{backup, covers, network};
 use serde::Serialize;
 use std::path::PathBuf;
-use tauri_plugin_dialog::DialogExt;
 
 const MAX_BATCH: usize = 10_000;
 
@@ -135,7 +134,7 @@ pub async fn backup_create(app: tauri::AppHandle, state: St<'_>) -> AppResult<bo
     current(&state)?;
     let name = format!("Relay backup {}.{}", backup::date_string(crate::util::now_secs()), backup::EXTENSION);
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().set_file_name(name).add_filter("Relay backup", &[backup::EXTENSION]).save_file(move |p| {
+    crate::util::file_dialog(&app).set_file_name(name).add_filter("Relay backup", &[backup::EXTENSION]).save_file(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(path)) = rx.await.ok() else { return Ok(false) };
@@ -150,7 +149,7 @@ pub async fn backup_create(app: tauri::AppHandle, state: St<'_>) -> AppResult<bo
 pub async fn backup_restore(app: tauri::AppHandle, state: St<'_>) -> AppResult<usize> {
     current(&state)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().add_filter("Relay backup", &[backup::EXTENSION]).pick_file(move |p| {
+    crate::util::file_dialog(&app).add_filter("Relay backup", &[backup::EXTENSION]).pick_file(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(path)) = rx.await.ok() else { return Ok(0) };
@@ -166,7 +165,7 @@ pub async fn backup_restore(app: tauri::AppHandle, state: St<'_>) -> AppResult<u
 pub async fn backup_folder_pick(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<String>> {
     current(&state)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
-    app.dialog().file().pick_folder(move |p| {
+    crate::util::file_dialog(&app).pick_folder(move |p| {
         let _ = tx.send(p);
     });
     let Some(Some(dir)) = rx.await.ok() else { return Ok(None) };

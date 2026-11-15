@@ -193,6 +193,10 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   * {
     animation-duration: 1ms !important;
-    transition-duration: 1ms !important;
+    /* Without this, endless animations (backdrop drift, playing bars) flicker at 1 ms a round. */
+    animation-iteration-count: 1 !important;
+    /* Zero, not 1 ms: a short duration would turn every style change into a transition, and
+       code that measures right after a change would read the old value. */
+    transition-duration: 0s !important;
   }
 }

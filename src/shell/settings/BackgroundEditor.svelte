@@ -13,6 +13,7 @@
   import { backgrounds } from "../../lib/stores/backgrounds.svelte";
   import { BACKGROUND_PLACES, settings, type BackgroundPlace } from "../../lib/stores/settings.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
+  import { visual } from "../../lib/stores/visual.svelte";
   import SettingRow from "./SettingRow.svelte";
 
   const active = $derived(backgrounds.active);
@@ -79,7 +80,7 @@
     onpointerdown={down}
     onpointermove={move}
     onpointerup={() => (drag = null)}>
-    <BackgroundImage url={active.url} {look} colors={ui.coverColors} />
+    <BackgroundImage url={active.url} {look} colors={ui.coverColors} still={visual.quality === "low"} />
     <span class="sample">{t("bg.sample")}</span>
   </div>
 
@@ -96,7 +97,7 @@
   </SettingRow>
   <div class="where">{t("bg.where")}</div>
   {#each BACKGROUND_PLACES as place (place)}
-    <SettingRow label={t(placeLabel[place])} desc={place === "mini" ? t("bg.place.miniDesc") : undefined}>
+    <SettingRow label={t(placeLabel[place])}>
       <Toggle label={t(placeLabel[place])} checked={settings.values.backgroundWhere.includes(place)} onchange={(on) => togglePlace(place, on)} />
     </SettingRow>
   {/each}

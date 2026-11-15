@@ -92,6 +92,14 @@ pub struct AppState {
     pub youtube_account: youtube_account::YouTubeAccount,
 }
 
+/// WebView2 would otherwise register its own media session and grab the media keys, pausing
+/// the <audio> elements behind the app's back; Relay's own SMTC session handles them instead.
+/// The first three flags are wry's defaults, which this setting replaces. Every window must
+/// pass exactly these: WebView2 refuses to create a webview whose browser arguments differ from
+/// the ones the shared browser process started with.
+pub(crate) const BROWSER_ARGS: &str =
+    "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,HardwareMediaKeyHandling,MediaSessionService";
+
 const FFMPEG_PREFETCH_DELAY: Duration = Duration::from_secs(60);
 
 /// Only the app's own pages may load in the window; everything else opens in the browser.
@@ -141,12 +149,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .center()
         .background_color(tauri::window::Color(10, 10, 11, 255))
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Disabled)
-        // WebView2 would otherwise register its own media session and grab the media keys,
-        // pausing the <audio> elements behind the app's back. Relay's own SMTC session handles
-        // them instead. The first three flags are wry's defaults, which this setting replaces.
-        .additional_browser_args(
-            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,HardwareMediaKeyHandling,MediaSessionService",
-        )
+        .additional_browser_args(BROWSER_ARGS)
         .on_navigation(is_app_url)
         // Hidden until the page is there: a new WebView2 paints one white frame before its
         // background color applies, which flashes on screen at startup.

@@ -300,9 +300,13 @@ async fn download(state: Arc<AppState>, requested_id: String, buf: Arc<Buffer>, 
         // Hand the finished file to the cache (or downloads) before "done" is announced, so a
         // download waiting for this song finds it already stored.
         Ok(()) if buf.progress.borrow().written > 0 => {
-            match crate::storage::keep(&state, &requested_id, &buf.path(), &buf.played, buf.stand_in, &buf.mime, buf.loudness_db) {
-                Ok(path) => {
-                    *buf.path.lock().unwrap_or_else(|p| p.into_inner()) = path;
+            // The path stays locked while the file moves, so `serve` never reads the old place.
+            // The player asks for a song's last bytes right as its download ends (fragmented
+            // MP4 keeps an index there), which is exactly when the move happens.
+            let mut path = buf.path.lock().unwrap_or_else(|p| p.into_inner());
+            match crate::storage::keep(&state, &requested_id, &path, &buf.played, buf.stand_in, &buf.mime, buf.loudness_db) {
+                Ok(kept) => {
+                    *path = kept;
                     buf.owned.store(false, Ordering::SeqCst);
                 }
                 Err(e) => eprintln!("keeping {} failed: {e}", buf.played.id),
@@ -548,8 +552,12 @@ pub async fn serve(state: Arc<AppState>, req: Request<Vec<u8>>) -> Response<Vec<
     }
     let available_end = p.written.saturating_sub(1);
     let end = req_end.unwrap_or(u64::MAX).min(start + SERVE_MAX - 1).min(available_end).min(total - 1);
-    // The file may have moved into the cache a moment ago; a second try finds it there.
-    match read_range(&buf.path(), start, end).or_else(|_| read_range(&buf.path(), start, end)) {
+    // Read under the path lock: a finished download moves its file into the cache under it.
+    let read = {
+        let path = buf.path.lock().unwrap_or_else(|p| p.into_inner());
+        read_range(&path, start, end)
+    };
+    match read {
         Ok(body) => Response::builder()
             .status(StatusCode::PARTIAL_CONTENT)
             .header(header::CONTENT_TYPE, buf.mime.as_str())
