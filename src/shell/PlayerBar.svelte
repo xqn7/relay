@@ -14,6 +14,7 @@
   import { t } from "../lib/i18n/index.svelte";
   import { history } from "../lib/stores/history.svelte";
   import { menu } from "../lib/stores/menu.svelte";
+  import { nowArt } from "../lib/stores/art.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { settings } from "../lib/stores/settings.svelte";
   import { sound } from "../lib/stores/sound.svelte";
@@ -63,6 +64,8 @@
     void el.offsetWidth;
     el.classList.add("rippling");
   }
+  /** Same length as the backdrop's color change, so both land together. */
+  const ART_FADE_MS = 600;
 </script>
 
 <footer class="bar glass">
@@ -72,12 +75,19 @@
 
   <div class="now">
     {#if track}
+      <!-- The cover fades with the backdrop's colors (both follow nowArt), the title with the song. -->
+      <div class="swap art-swap">
+        {#each [nowArt.url] as url (url)}
+          <button class="cover-btn swap-cell" title={t("full.open")} onclick={() => (ui.fullscreenOpen = true)} in:fade={{ duration: ART_FADE_MS }} out:fade={{ duration: ART_FADE_MS }}>
+            <Cover src={url} size={44} />
+          </button>
+        {/each}
+      </div>
       <!-- Old and new song share one cell, so the change is a soft crossfade, not a jump. A keyed
            each keeps the outgoing song's own details while it fades. -->
       <div class="swap">
         {#each [track] as tr (tr.id)}
           <div class="swap-cell" in:scale={visual.quality === "low" ? { start: 1, duration: 120, opacity: 0 } : { start: 0.96, duration: 280, opacity: 0 }} out:fade={{ duration: visual.quality === "low" ? 80 : 160 }}>
-            <button class="cover-btn" title={t("full.open")} onclick={() => (ui.fullscreenOpen = true)}><Cover src={tr.cover ?? player.via?.cover ?? null} size={44} /></button>
             <div class="meta" role="button" tabindex="-1" oncontextmenu={(e) => openTrackMenu(e, { tracks: [tr], index: 0 })}>
               <div class="title truncate">{tr.title}</div>
               <div class="artist">
@@ -191,6 +201,9 @@
   .swap {
     display: grid;
     min-width: 0;
+  }
+  .art-swap {
+    flex: none;
   }
   .swap-cell {
     grid-area: 1 / 1;

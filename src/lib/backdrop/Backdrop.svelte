@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { nowArt } from "../stores/art.svelte";
   import { backgrounds } from "../stores/backgrounds.svelte";
   import { player } from "../stores/player.svelte";
   import { settings, type BackgroundPlace } from "../stores/settings.svelte";
@@ -33,6 +34,7 @@
     // Ignore results for covers the user already moved past.
     const apply = (next: Rgb[]) => id === seq && (colors = next);
     if (!url) apply(neutralColors());
+    else if (url === nowArt.url) apply(nowArt.colors);
     else coverColors(url).then(apply, () => apply(neutralColors()));
   });
 </script>

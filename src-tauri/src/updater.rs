@@ -22,8 +22,6 @@ const MAX_NOTES: usize = 8000;
 const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZBMkMyRTdCNjQ1NjIwNTEKUldSUklGWmtleTRzK2kvNFQ5R2dOV0lhcXhUS1V0ZGVJOUFtVDUrWW5qOE01bmYxNmY5MVNsUUgK";
 const PLATFORM: &str = "windows-x86_64";
 const MAX_INSTALLER_BYTES: u64 = 200 * 1024 * 1024;
-/// The startup check waits a little, so it never competes with the app's own start.
-const STARTUP_DELAY: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -126,19 +124,23 @@ fn update_dir(state: &AppState) -> PathBuf {
     state.updater.dir.clone()
 }
 
-/// Startup: one quiet check a little after launch. Finds and downloads; the UI hears about it
-/// through "update-ready".
-pub fn check_later(state: &Arc<AppState>) {
+/// Startup: one quiet check right away, in the background so the window doesn't wait for it.
+/// Finds and downloads; the UI hears about it through "update-ready".
+pub fn check_on_start(state: &Arc<AppState>) {
     let state = state.clone();
     tauri::async_runtime::spawn(async move {
         let _ = std::fs::remove_dir_all(update_dir(&state));
-        tokio::time::sleep(STARTUP_DELAY).await;
         if state.net.online() {
             if let Err(e) = check(&state).await {
                 eprintln!("update check failed: {e}");
             }
         }
     });
+}
+
+/// An update already downloaded and waiting, if any.
+pub fn ready(state: &AppState) -> Option<UpdateInfo> {
+    state.updater.ready.lock().unwrap_or_else(|p| p.into_inner()).as_ref().map(|(info, _)| info.clone())
 }
 
 /// The notes of the release this version came from ("" when it has none).

@@ -21,6 +21,9 @@ pub struct DesktopInfo {
     /// "unset" (no Discord application yet), "off", "waiting" (Discord not running), "connected".
     discord: &'static str,
     version: String,
+    /// The YouTube helper is blocked on this PC (often found before sign-in, so the page
+    /// asks instead of only hearing the event).
+    helper_blocked: bool,
 }
 
 #[tauri::command]
@@ -39,6 +42,7 @@ pub fn desktop_info(state: St) -> DesktopInfo {
         lyrics_unlocked: overlays::lyrics_unlocked(&state),
         discord,
         version: state.app.package_info().version.to_string(),
+        helper_blocked: state.tools.ytdlp_blocked(),
     }
 }
 
@@ -114,6 +118,12 @@ pub async fn hardware_info(state: St<'_>) -> AppResult<HardwareInfo> {
 #[tauri::command]
 pub fn discord_preview(state: St) -> Option<serde_json::Value> {
     crate::desktop::discord_activity(state.inner(), true)
+}
+
+/// An update found before the page was listening (the check runs right at start).
+#[tauri::command]
+pub fn update_ready(state: St) -> Option<UpdateInfo> {
+    updater::ready(&state)
 }
 
 /// "What's new": the notes of the release now running, shown once after an update.

@@ -14,6 +14,7 @@
   import { artistMenu, collectionMenu } from "../lib/pins";
   import { offline } from "../lib/stores/offline.svelte";
   import { warmNow } from "../lib/player/warm";
+  import { cachedSearch, rememberSearch } from "../lib/searchCache";
   import { player, sourceLabel } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
@@ -83,7 +84,9 @@
       return;
     }
     lyricHits = null;
-    timer = window.setTimeout(() => run(q, k, id), DEBOUNCE_MS);
+    // Searched a moment ago: no need to wait for the typing to settle.
+    const known = sourcesFor(k).every((s) => cachedSearch(s, k, q));
+    timer = window.setTimeout(() => run(q, k, id), known ? 0 : DEBOUNCE_MS);
   });
 
   async function findByLyrics(q: string, id: number) {
@@ -136,10 +139,17 @@
 
   function run(q: string, k: SearchKind, id: number) {
     const sources = sourcesFor(k);
-    results = Object.fromEntries(sources.map((s) => [s, { state: "loading" }]));
+    results = Object.fromEntries(
+      sources.map((s) => {
+        const data = cachedSearch(s, k, q);
+        return [s, data ? { state: "done", data } : { state: "loading" }];
+      }),
+    );
     for (const source of sources) {
+      if (results[source]?.state === "done") continue;
       api.search(source, q, k).then(
         (data) => {
+          rememberSearch(source, k, q, data);
           if (id !== seq) return;
           results[source] = { state: "done", data };
           // The top song is the most likely pick; look it up before the click.

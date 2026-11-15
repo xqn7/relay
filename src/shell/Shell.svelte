@@ -6,6 +6,7 @@
   import Menu from "../lib/components/Menu.svelte";
   import { t } from "../lib/i18n/index.svelte";
   import { dnd } from "../lib/stores/dnd.svelte";
+  import { nowArt } from "../lib/stores/art.svelte";
   import { player } from "../lib/stores/player.svelte";
   import { settings } from "../lib/stores/settings.svelte";
   import { ui } from "../lib/stores/ui.svelte";
@@ -36,7 +37,13 @@
   const scrollTop = () => main?.scrollTop ?? 0;
   ui.scrollTop = scrollTop;
   // Artist and album pages tint the backdrop with their own art while they're open.
-  const backdropCover = $derived(ui.heroCover ?? player.current?.track.cover ?? player.via?.cover ?? null);
+  const backdropCover = $derived(ui.heroCover ?? nowArt.url);
+  // The playing song's cover and colors switch together (see art.svelte.ts).
+  $effect(() => {
+    const url = player.current?.track.cover ?? player.via?.cover ?? null;
+    const big = ui.fullscreenOpen;
+    untrack(() => nowArt.show(url, big));
+  });
 
   onMount(() => {
     let addToast: number | null = null;

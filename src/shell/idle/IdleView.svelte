@@ -12,11 +12,12 @@
   import LyricText from "../../lib/lyrics/LyricText.svelte";
   import { livePosition } from "../../lib/lyrics/position.svelte";
   import { lyrics } from "../../lib/stores/lyrics.svelte";
+  import { nowArt } from "../../lib/stores/art.svelte";
   import { player } from "../../lib/stores/player.svelte";
 
   const pos = livePosition();
   const track = $derived(player.current?.track ?? null);
-  const cover = $derived(track?.cover ?? player.via?.cover ?? null);
+  const cover = $derived(nowArt.url);
   const lines = $derived(lyrics.status === "ready" && lyrics.data?.synced ? buildLines(lyrics.data.synced, player.durationMs) : []);
   const active = $derived(activeIndex(lines, pos.ms));
   const line = $derived(lines[active] ?? null);

@@ -2,7 +2,7 @@
      lyrics (or the lyrics editor) beside it. -->
 <script lang="ts">
   import { fade, fly, scale } from "svelte/transition";
-  import { api, compactCount, coverAt, formatTime, proxiedCover, type Track } from "../../lib/api";
+  import { api, compactCount, coverAt, formatTime, proxiedCover } from "../../lib/api";
   import Backdrop from "../../lib/backdrop/Backdrop.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import IconButton from "../../lib/components/IconButton.svelte";
@@ -17,6 +17,7 @@
   import Spinner from "../../lib/components/Spinner.svelte";
   import { i18n, t } from "../../lib/i18n/index.svelte";
   import { openArtist } from "../../lib/navigate";
+  import { BIG_ART, nowArt } from "../../lib/stores/art.svelte";
   import { offline } from "../../lib/stores/offline.svelte";
   import { player } from "../../lib/stores/player.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
@@ -26,10 +27,11 @@
   import LyricsView from "./LyricsView.svelte";
 
   const track = $derived(player.current?.track ?? null);
-  const cover = $derived(track?.cover ?? player.via?.cover ?? null);
-  let hd = $state<{ id: string; url: string } | null>(null);
-  function artUrl(tr: Track | null): string | null {
-    const url = tr && hd?.id === tr.id ? hd.url : coverAt(tr?.cover ?? player.via?.cover ?? null, 1200);
+  const cover = $derived(nowArt.url);
+  let hd = $state<{ id: string; cover: string; url: string } | null>(null);
+  /** The shown cover, in HD once that's found for it. */
+  function artUrl(shown: string | null): string | null {
+    const url = shown && hd?.cover === shown ? hd.url : coverAt(shown, BIG_ART);
     return url ? proxiedCover(url) : null;
   }
   let editing = $state(false);
@@ -41,7 +43,7 @@
     api
       .coverHd(tr)
       .then((url) => {
-        if (url && player.current?.track.id === tr.id) hd = { id: tr.id, url };
+        if (url && player.current?.track.id === tr.id) hd = { id: tr.id, cover: tr.cover ?? player.via?.cover ?? "", url };
       })
       .catch(() => {});
   });
@@ -70,8 +72,8 @@
     <section class="now">
       <div class="art" class:breathing={player.playing}>
         {#if player.markers}<RangePanel docked />{/if}
-        {#each [track] as tr (tr?.id)}
-          {@const url = artUrl(tr)}
+        {#each [cover] as shown (shown)}
+          {@const url = artUrl(shown)}
           <div class="art-cell" in:scale={visual.quality === "low" ? { start: 1, duration: 140, opacity: 0 } : { start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: visual.quality === "low" ? 100 : 360 }}>
             {#if url}
               <img src={url} alt="" draggable="false" />

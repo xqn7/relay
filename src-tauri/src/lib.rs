@@ -255,7 +255,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
     if !is_dev() {
-        updater::check_later(&state);
+        updater::check_on_start(&state);
     }
     tauri::async_runtime::spawn(local::start(state.clone()));
     {
@@ -503,6 +503,7 @@ pub fn run() {
             desktop_commands::discord_preview,
             desktop_commands::update_check,
             desktop_commands::release_notes,
+            desktop_commands::update_ready,
             desktop_commands::update_install,
             desktop_commands::youtube_status,
             desktop_commands::youtube_sign_in,

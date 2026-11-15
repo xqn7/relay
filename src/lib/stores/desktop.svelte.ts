@@ -38,6 +38,7 @@ class DesktopStore {
   private attached = false;
   private lastNow: NowFeed | null = null;
   private qualityHintShown = false;
+  private blockedShown = false;
 
   /** Wires events and effects once, after sign-in. */
   async attach(): Promise<void> {
@@ -47,14 +48,21 @@ class DesktopStore {
       listen<boolean>("game-mode", ({ payload }) => (visual.game = payload === true)),
       listen<UpdateInfo>("update-ready", ({ payload }) => this.offerUpdate(payload)),
       listen<boolean>("lyrics-unlocked", ({ payload }) => (this.lyricsUnlocked = payload === true)),
-      listen("helper-blocked", () => ui.toast(t("helper.blocked"), "alert")),
+      listen("helper-blocked", () => this.warnBlocked()),
       listen(READY_EVENT, () => {
         this.sendNow();
         this.sendLyrics();
       }),
       listen<RemoteAction>(REMOTE_EVENT, ({ payload }) => this.remote(payload)),
     ]);
+    // The update check runs right at start, often before sign-in; one it already found is
+    // offered now.
+    api
+      .updateReady()
+      .then((info) => info && !this.update && this.offerUpdate(info))
+      .catch(() => {});
     this.info = await api.desktopInfo().catch(() => null);
+    if (this.info?.helperBlocked) this.warnBlocked();
     if (this.info) this.showChangelog(this.info.version);
     visual.game = this.info?.game ?? false;
     this.lyricsUnlocked = this.info?.lyricsUnlocked ?? false;
@@ -172,6 +180,13 @@ class DesktopStore {
       this.lyricsOpen = false;
       api.lyricsActive(false).catch((e) => console.error("desktop lyrics failed", e));
     }, LYRICS_IDLE_MS);
+  }
+
+  /** Once per start, whether the event came first or sign-in did. */
+  private warnBlocked(): void {
+    if (this.blockedShown) return;
+    this.blockedShown = true;
+    ui.toast(t("helper.blocked"), "alert");
   }
 
   setLyricsUnlocked(on: boolean): void {

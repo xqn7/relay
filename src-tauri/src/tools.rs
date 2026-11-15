@@ -342,6 +342,11 @@ impl Tools {
         }
     }
 
+    /// yt-dlp didn't run even after downloading it again (found by the start-up check).
+    pub fn ytdlp_blocked(&self) -> bool {
+        self.blocked.load(Ordering::SeqCst)
+    }
+
     pub fn ytdlp_ready(&self) -> bool {
         self.ytdlp_path().exists()
     }

@@ -511,6 +511,7 @@ export const api = {
   connectionCheck: () => invoke<ConnectionCheck[]>("connection_check"),
   logTail: () => invoke<string>("log_tail"),
   releaseNotes: () => invoke<string>("release_notes"),
+  updateReady: () => invoke<UpdateInfo | null>("update_ready"),
   lyricsSearch: (query: string) => invoke<LyricHit[]>("lyrics_search", { query }),
   lyricsHitTrack: (hit: LyricHit) => invoke<Track>("lyrics_hit_track", { hit }),
   reportProblem: (message: string, picture: Uint8Array) => invoke<void>("report_problem", picture, { headers: { message: encodeURIComponent(message) } }),
@@ -601,6 +602,7 @@ export interface DesktopInfo {
   lyricsUnlocked: boolean;
   discord: "off" | "waiting" | "connected";
   version: string;
+  helperBlocked: boolean;
 }
 
 export interface UiLabels {
