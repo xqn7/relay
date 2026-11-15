@@ -65,6 +65,12 @@ pub struct HomeLists {
     top_artists: Vec<ArtistStat>,
 }
 
+/// The queue panel's "Recently played": the last songs, newest first, each once.
+#[tauri::command]
+pub fn recent_plays(state: St) -> AppResult<Vec<Track>> {
+    history::recent(&state.db, &current(&state)?.id, RECENT_LIMIT)
+}
+
 #[tauri::command]
 pub fn home_lists(state: St) -> AppResult<HomeLists> {
     let account = current(&state)?.id;

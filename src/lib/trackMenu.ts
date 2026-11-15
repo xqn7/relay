@@ -11,6 +11,7 @@ import { menu, type MenuItem } from "./stores/menu.svelte";
 import { offline } from "./stores/offline.svelte";
 import { player } from "./stores/player.svelte";
 import { ui } from "./stores/ui.svelte";
+import { renderShareCard } from "./shareCard";
 
 export interface MenuContext {
   /** The list the song is in (played from here with "Play"). */
@@ -45,6 +46,45 @@ function playlistItems(tracks: Track[]): MenuItem[] {
     items.push({ label: p.name, icon: "list", divider: i === 0, action: () => library.addToPlaylist(p.id, tracks) }),
   );
   return items;
+}
+
+/** The song's page on YouTube or SoundCloud; imported songs share the version they play from. */
+async function shareLink(track: Track): Promise<string | null> {
+  if (track.link) return track.link;
+  if (!IMPORT_ONLY.has(track.source)) return null;
+  const match = await api.matchGet(track).catch(() => null);
+  return match?.link ?? null;
+}
+
+/** "Share": copy the song's link, or save a card image of it. */
+function shareItems(track: Track): MenuItem[] {
+  return [
+    {
+      label: t("share.copyLink"),
+      icon: "link",
+      action: async () => {
+        const link = await shareLink(track);
+        if (!link) return void ui.toast(t("share.noLink"), "info");
+        await navigator.clipboard.writeText(link);
+        ui.toast(t("toast.linkCopied"), "check");
+      },
+    },
+    {
+      label: t("share.image"),
+      icon: "image",
+      action: async () => {
+        try {
+          const via = IMPORT_ONLY.has(track.source) ? track.via : track.source;
+          const source = via === "soundcloud" ? "SoundCloud" : via === "local" ? t("source.local") : "YouTube";
+          const png = await renderShareCard(track, t("share.kicker"), t("share.on", { source }));
+          if (await api.imageSave(png, `${track.title} - ${track.artists.map((a) => a.name).join(", ")}`)) ui.toast(t("share.saved"), "check");
+        } catch (e) {
+          console.error("share card failed", e);
+          ui.toast(t("share.failed"), "alert");
+        }
+      },
+    },
+  ];
 }
 
 function artistItems(track: Track): MenuItem[] {
@@ -127,14 +167,7 @@ export function trackMenuItems(ctx: MenuContext): MenuItem[] {
     },
   });
   if (library.trims[track.id]) items.push({ label: t("trim.reset"), icon: "scissors", action: () => player.resetTrim(track) });
-  items.push({
-    label: t("menu.copyLink"),
-    icon: "link",
-    disabled: !track.link,
-    action: () => {
-      if (track.link) navigator.clipboard.writeText(track.link).then(() => ui.toast(t("toast.linkCopied"), "check"));
-    },
-  });
+  items.push({ label: t("share.title"), icon: "upload", submenu: true, action: () => menu.replace(shareItems(track)) });
   items.push({ label: t("cover.save"), icon: "image", disabled: !track.cover, action: () => saveTrackCover(track) });
 
   if (IMPORT_ONLY.has(track.source)) {

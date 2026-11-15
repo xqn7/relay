@@ -268,6 +268,18 @@ pub fn watch(state: &Arc<AppState>) {
     });
 }
 
+/// The newest backup file in these folders (the default backup places), if any.
+pub fn newest_in(folders: &[PathBuf]) -> Option<PathBuf> {
+    folders
+        .iter()
+        .filter_map(|f| std::fs::read_dir(f).ok())
+        .flat_map(|entries| entries.flatten())
+        .filter(|e| e.path().extension().is_some_and(|x| x == EXTENSION))
+        .filter_map(|e| Some((e.metadata().ok()?.modified().ok()?, e.path())))
+        .max_by_key(|(at, _)| *at)
+        .map(|(_, p)| p)
+}
+
 async fn write_current(state: &AppState, folder: &Path) -> AppResult<()> {
     tokio::fs::create_dir_all(folder).await?;
     write_file(&state.db, &folder.join(CURRENT_NAME)).await

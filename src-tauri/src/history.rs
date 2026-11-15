@@ -79,6 +79,11 @@ pub fn record(db: &Db, account: &str, track: &Track, ms: i64) -> AppResult<Strin
 }
 
 /// Updates how long a recorded play was listened to (it keeps growing after it counted).
+/// Settings → Account: forgets plays since `since` (all of them with None). Returns how many.
+pub fn clear(db: &Db, account: &str, since: Option<i64>) -> AppResult<usize> {
+    db.with(|c| c.execute("DELETE FROM plays WHERE account_id=?1 AND (?2 IS NULL OR played_at>=?2)", params![account, since]))
+}
+
 pub fn set_listened(db: &Db, account: &str, id: &str, ms: i64) -> AppResult<()> {
     db.with(|c| {
         c.execute(

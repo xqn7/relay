@@ -2,7 +2,7 @@
 import type { Key } from "../../lib/i18n/en";
 import type { IconName } from "../../lib/icons";
 
-export type PageId = "playback" | "appearance" | "miniPlayer" | "youtube" | "discord" | "storage" | "startup" | "about" | "docs";
+export type PageId = "account" | "playback" | "appearance" | "miniPlayer" | "youtube" | "discord" | "storage" | "startup" | "about" | "docs";
 
 export interface PageDef {
   id: PageId;
@@ -14,6 +14,17 @@ export interface PageDef {
 }
 
 export const pages: PageDef[] = [
+  {
+    id: "account",
+    group: "settings.group.account",
+    icon: "user",
+    label: "settings.page.account",
+    rows: [
+      ["account.password", "account.passwordDesc"],
+      ["account.recovery", "account.recoveryDesc"],
+      ["account.history", "account.historyDesc"],
+    ],
+  },
   {
     id: "playback",
     group: "settings.group.player",

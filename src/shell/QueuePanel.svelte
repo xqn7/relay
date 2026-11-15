@@ -2,7 +2,7 @@
   import { flip } from "svelte/animate";
   import { spring } from "../lib/motion";
   import { fly } from "svelte/transition";
-  import { artistLine } from "../lib/api";
+  import { api, artistLine, type Track } from "../lib/api";
   import { playsFrom } from "../lib/navigate";
   import Button from "../lib/components/Button.svelte";
   import Cover from "../lib/components/Cover.svelte";
@@ -14,6 +14,7 @@
   import { ui } from "../lib/stores/ui.svelte";
   import { dialogs } from "../lib/stores/dialogs.svelte";
   import { library } from "../lib/stores/library.svelte";
+  import { history } from "../lib/stores/history.svelte";
 
   let drag = $state<{ uid: string; startY: number; offset: number; rowH: number } | null>(null);
   const base = $derived(player.queue.index + 1);
@@ -42,6 +43,23 @@
 
   function endDrag() {
     drag = null;
+  }
+
+  // Recently played: reloaded whenever a play is counted, so it follows along while open.
+  let recent = $state<Track[]>([]);
+  $effect(() => {
+    void history.version;
+    api
+      .recentPlays()
+      .then((list) => (recent = list.filter((x) => x.id !== player.current?.track.id)))
+      .catch((e) => console.error("recent plays failed", e));
+  });
+
+  /** Plays a song from the history now, keeping the rest of the queue after it. */
+  function playAgain(track: Track) {
+    if (!player.current) return player.playTracks([track], 0);
+    player.playNextTracks([track]);
+    player.next();
   }
 
   function saveQueue() {
@@ -108,6 +126,22 @@
               <div class="artist"><SourceBadge source={playsFrom(item.track)} /><span class="truncate">{artistLine(item.track)}</span></div>
             </div>
             <button class="remove" aria-label={t("queue.remove")} onclick={() => player.remove(item.uid)}><Icon name="close" size={15} /></button>
+          </div>
+        {/each}
+      </div>
+    {/if}
+
+    {#if recent.length}
+      <h3>{t("queue.recent")}</h3>
+      <div class="list">
+        {#each recent as track (track.id)}
+          <div class="item past" role="button" tabindex="0" title={t("queue.playAgain")} ondblclick={() => playAgain(track)} onkeydown={(e) => e.key === "Enter" && playAgain(track)}>
+            <Cover src={track.cover} size={40} />
+            <div class="text">
+              <div class="title truncate">{track.title}</div>
+              <div class="artist"><SourceBadge source={playsFrom(track)} /><span class="truncate">{artistLine(track)}</span></div>
+            </div>
+            <button class="remove" aria-label={t("queue.playAgain")} onclick={() => playAgain(track)}><Icon name="play" size={14} /></button>
           </div>
         {/each}
       </div>
@@ -245,6 +279,13 @@
   .remove:hover {
     color: var(--text);
     background: var(--hover);
+  }
+  /* Already played: a step back, so the upcoming songs stay the focus. */
+  .past {
+    opacity: 0.72;
+  }
+  .past:hover {
+    opacity: 1;
   }
   .empty {
     margin: 6px 8px;

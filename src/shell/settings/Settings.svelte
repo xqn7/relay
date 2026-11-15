@@ -10,6 +10,7 @@
   import { session } from "../../lib/stores/session.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
   import { pages, type PageId } from "./pages";
+  import AccountPage from "./AccountPage.svelte";
   import AppearancePage from "./AppearancePage.svelte";
   import PlaybackPage from "./PlaybackPage.svelte";
   import StoragePage from "./StoragePage.svelte";
@@ -102,7 +103,9 @@
       <IconButton icon="close" label={t("settings.close")} onclick={() => (ui.settingsOpen = false)} />
     </header>
     <div class="content" bind:this={content}>
-      {#if current.id === "playback"}
+      {#if current.id === "account"}
+        <AccountPage {visible} />
+      {:else if current.id === "playback"}
         <PlaybackPage {visible} />
       {:else if current.id === "appearance"}
         <AppearancePage {visible} />

@@ -68,7 +68,9 @@ class DesktopStore {
     this.lyricsUnlocked = this.info?.lyricsUnlocked ?? false;
     api
       .hardwareInfo()
-      .then((h) => (visual.hardware = h))
+      .then((h) => {
+        visual.hardware = h;
+      })
       .catch((e) => console.error("hardware info failed", e));
     $effect.root(() => this.effects());
   }

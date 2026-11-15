@@ -273,6 +273,22 @@ impl Db {
         Ok(Self(Mutex::new(conn)))
     }
 
+    /// Opens the library, checking it first. A damaged file (a power cut mid-write, a bad disk)
+    /// is renamed, not deleted, and a fresh library starts; `true` says that happened, so the
+    /// app can offer the latest backup.
+    pub fn open_checked(path: &Path) -> AppResult<(Self, bool)> {
+        let healthy = Connection::open(path)
+            .and_then(|c| c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0)))
+            .is_ok_and(|answer| answer == "ok");
+        if healthy || !path.exists() {
+            return Ok((Self::open(path)?, false));
+        }
+        let aside = path.with_file_name(format!("relay.damaged-{}.db", crate::util::now_secs()));
+        std::fs::rename(path, &aside)?;
+        eprintln!("library file was damaged; kept as {}", aside.display());
+        Ok((Self::open(path)?, true))
+    }
+
     #[cfg(test)]
     pub fn in_memory() -> Self {
         let conn = Connection::open_in_memory().unwrap();
@@ -358,6 +374,23 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::Db;
+
+    #[test]
+    fn a_damaged_file_is_set_aside() {
+        let dir = std::env::temp_dir().join(format!("relay-dbcheck-{}", crate::util::uuid_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("relay.db");
+        std::fs::write(&path, b"this is not a database, just junk left by a crash ...........").unwrap();
+        let (db, damaged) = Db::open_checked(&path).unwrap();
+        assert!(damaged);
+        assert!(db.with(|c| c.query_row("SELECT COUNT(*) FROM accounts", [], |r| r.get::<_, i64>(0))).is_ok());
+        let kept = std::fs::read_dir(&dir).unwrap().flatten().any(|e| e.file_name().to_string_lossy().starts_with("relay.damaged-"));
+        assert!(kept, "the damaged file is kept");
+        drop(db);
+        let (_, again) = Db::open_checked(&path).unwrap();
+        assert!(!again, "a healthy file passes");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     #[should_panic(expected = "would deadlock")]

@@ -92,6 +92,8 @@ pub struct AppState {
     pub desktop: desktop::Desktop,
     pub updater: updater::Updater,
     pub reports: report::Reports,
+    /// The library file was damaged at start and set aside (see Db::open_checked).
+    pub library_damaged: AtomicBool,
     pub youtube_account: youtube_account::YouTubeAccount,
 }
 
@@ -167,7 +169,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     log::start(&local_dir);
 
     let in_tray = std::env::args().any(|a| a == desktop::TRAY_ARG);
-    let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
+    let (db, library_damaged) = Db::open_checked(&data_dir.join("relay.db"))?;
+    let db = Arc::new(db);
     let maximized = db.device_get(MAXIMIZED_KEY).ok().flatten().is_some_and(|v| v == "1");
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title(app_name())
@@ -218,8 +221,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         desktop: desktop::Desktop::new(in_tray),
         updater: updater::Updater::new(&local_dir),
         reports: report::Reports::default(),
+        library_damaged: AtomicBool::new(library_damaged),
         youtube_account: youtube_account::YouTubeAccount::load(),
-        yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
+        yt: YouTube::new(&local_dir.join("youtube"), tools.clone(), http.clone())?,
         tools,
         sc: SoundCloud::new(http.clone(), db.clone()),
         streams: Streams::new(local_dir.join("buffer"))?,
@@ -233,6 +237,9 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let state = Arc::new(state);
     app.manage(state.clone());
     report::catch_panics(&state);
+    if library_damaged {
+        report::error(&state, "library_damaged", "the library file was damaged at start and set aside");
+    }
     {
         let app = handle.clone();
         state.tools.set_reporter(move |p| {
@@ -373,6 +380,10 @@ pub fn run() {
             commands::prepare_track,
             commands::prefetch_track,
             commands::warm_track,
+            commands::recovery_key_save,
+            commands::account_change_password,
+            commands::account_new_recovery_key,
+            commands::history_clear,
             commands::lyrics_search,
             commands::lyrics_hit_track,
             commands::queue_save,
@@ -452,6 +463,8 @@ pub fn run() {
             storage_commands::backup_restore,
             storage_commands::backup_folder_pick,
             storage_commands::backup_suggested_folder,
+            storage_commands::library_damaged,
+            storage_commands::library_restore_newest,
             storage_commands::cover_hd,
             storage_commands::cover_save,
             storage_commands::cover_drag_prepare,
@@ -476,6 +489,7 @@ pub fn run() {
             personal_commands::play_listened,
             personal_commands::play_counts,
             personal_commands::home_lists,
+            personal_commands::recent_plays,
             personal_commands::home_mixes,
             personal_commands::discover,
             personal_commands::listening_stats,

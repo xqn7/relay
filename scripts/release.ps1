@@ -7,6 +7,7 @@
 
   The updater's private key stays outside the repo, in %USERPROFILE%\.relay-keys\.
   The build goes to %LOCALAPPDATA%\relay-release\, outside the project folder.
+  With -Publish, the release is also posted to the Discord webhook in %USERPROFILE%\.relay-keys\.
 #>
 param(
   [Parameter(Mandatory)] [string] $Version,
@@ -105,3 +106,24 @@ Run "Push" { git push }
 Run "GitHub release" { gh release create "v$Version" $setup.FullName $sigFile $latestFile --repo $repo --title "Relay $Version" --notes-file $notesPath }
 Remove-Item $notesPath
 Write-Host "Released v$Version. Installed copies pick it up on their next start." -ForegroundColor Green
+
+# Tells the Discord channel behind the problem-report webhook (kept next to the signing key,
+# never in the repo). A failed post doesn't undo the release.
+$webhookFile = Join-Path $env:USERPROFILE ".relay-keys\report-webhook.txt"
+if (Test-Path $webhookFile) {
+  $webhook = (Get-Content $webhookFile -Raw).Trim()
+  $post = @{
+    username = "Relay"
+    embeds   = @(@{
+      title       = "Relay $Version is out"
+      url         = "https://github.com/$repo/releases/tag/v$Version"
+      description = $Notes.Trim().Substring(0, [Math]::Min($Notes.Trim().Length, 3500))
+    })
+  } | ConvertTo-Json -Depth 5
+  try {
+    Invoke-RestMethod -Uri $webhook -Method Post -ContentType "application/json; charset=utf-8" -Body ([Text.Encoding]::UTF8.GetBytes($post)) | Out-Null
+    Write-Host "Posted the release to Discord."
+  } catch {
+    Write-Host "Couldn't post the release to Discord: $($_.Exception.Message)" -ForegroundColor Yellow
+  }
+}

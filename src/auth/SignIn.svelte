@@ -2,6 +2,7 @@
   import { APP_NAME } from "../lib/brand";
   import { fade } from "svelte/transition";
   import { api, isAppError, type Account } from "../lib/api";
+  import { recoveryFileText } from "../lib/recoveryFile";
   import logo from "../lib/assets/logo.svg";
   import Button from "../lib/components/Button.svelte";
   import Field from "../lib/components/Field.svelte";
@@ -82,6 +83,18 @@
     copied = true;
   }
 
+  let downloaded = $state(false);
+  async function downloadKey() {
+    if (!created) return;
+    const text = recoveryFileText(created.account.email, created.recoveryKey);
+    try {
+      if (await api.recoveryKeySave(text)) downloaded = true;
+    } catch (e) {
+      console.error("saving the recovery key failed", e);
+      errors = { form: t("auth.recoverySaveFailed") };
+    }
+  }
+
   let restored = $state(false);
   /** The provider a misspelled email domain most likely meant ("gmial.com" → "gmail.com"). */
   let suggestion = $state("");
@@ -90,6 +103,26 @@
     email = `${email.trim().split("@")[0]}@${suggestion}`;
     suggestion = "";
     errors = {};
+  }
+
+  /** Set when the library file was damaged at start: the newest backup's name ("" if none). */
+  let damaged = $state<string | null>(null);
+  api
+    .libraryDamaged()
+    .then((d) => (damaged = d))
+    .catch(() => {});
+
+  async function restoreNewest() {
+    errors = {};
+    try {
+      await api.libraryRestoreNewest();
+      damaged = null;
+      const account = await api.authState();
+      if (account) onSignedIn(account);
+      else restored = true;
+    } catch (e) {
+      errors = { form: isAppError(e) && e.code === "bad_file" ? t("backup.badFile") : t("error.generic") };
+    }
   }
 
   /** A reinstalled PC has no accounts yet; a backup brings them back with their libraries. */
@@ -156,8 +189,12 @@
           <p>{t("auth.recoveryBody")}</p>
           <div class="key">
             <code>{created.recoveryKey}</code>
-            <Button variant="secondary" icon={copied ? "check" : "copy"} onclick={copyKey}>{copied ? t("auth.copied") : t("auth.copy")}</Button>
+            <span class="key-actions">
+              <Button variant="secondary" icon={copied ? "check" : "copy"} onclick={copyKey}>{copied ? t("auth.copied") : t("auth.copy")}</Button>
+              <Button variant="secondary" icon={downloaded ? "check" : "download"} onclick={downloadKey}>{downloaded ? t("auth.downloaded") : t("auth.download")}</Button>
+            </span>
           </div>
+          {#if errors.form}<p class="form-error"><Icon name="alert" size={14} />{errors.form}</p>{/if}
           <Button variant="primary" full onclick={() => created && onSignedIn(created.account, true)}>{t("auth.savedIt")}</Button>
         </div>
       {:else}
@@ -209,6 +246,16 @@
             <button type="button" class="link center" onclick={() => switchMode("signIn")}>{t("auth.backToSignIn")}</button>
           {/if}
         </form>
+        {#if damaged !== null && !restored}
+          <div class="damaged">
+            <p>{t("library.damaged")}</p>
+            {#if damaged}
+              <Button variant="primary" full icon="refresh" onclick={restoreNewest}>{t("library.damagedRestore", { file: damaged })}</Button>
+            {:else}
+              <p>{t("library.damagedNoBackup")}</p>
+            {/if}
+          </div>
+        {/if}
         {#if mode === "signIn"}
           {#if restored}
             <p class="restored"><Icon name="check" size={14} />{t("auth.restored")}</p>
@@ -405,6 +452,20 @@
     align-self: flex-start;
     margin-top: -8px;
   }
+  .damaged {
+    display: grid;
+    gap: 10px;
+    margin-top: 14px;
+    padding: 14px;
+    border-radius: var(--r-md);
+    background: rgba(var(--ink), 0.07);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+  .damaged p {
+    margin: 0;
+  }
   .restored {
     display: flex;
     align-items: center;
@@ -437,8 +498,13 @@
     display: grid;
     gap: 18px;
   }
+  .key-actions {
+    display: flex;
+    gap: 6px;
+  }
   .key {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
     gap: 12px;

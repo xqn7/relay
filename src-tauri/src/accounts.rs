@@ -165,6 +165,37 @@ pub fn reset_password(db: &Db, email: &str, recovery_key: &str, new_password: &s
     Ok(account)
 }
 
+/// The stored password and recovery hashes of a signed-in account.
+fn secrets_of(db: &Db, account_id: &str) -> AppResult<(String, String)> {
+    db.with(|c| c.query_row("SELECT password_hash,recovery_hash FROM accounts WHERE id=?1", [account_id], |r| Ok((r.get(0)?, r.get(1)?))).optional())?
+        .ok_or_else(|| AppError::new("no_account", ""))
+}
+
+/// Settings → Account: a new password, after the current one is confirmed.
+pub fn change_password(db: &Db, account_id: &str, current: &str, new_password: &str) -> AppResult<()> {
+    let (stored, _) = secrets_of(db, account_id)?;
+    if !verify(current, &stored) {
+        return Err(AppError::new("wrong_password", ""));
+    }
+    validate_password(new_password)?;
+    let pw_hash = hash(new_password)?;
+    db.with(|c| c.execute("UPDATE accounts SET password_hash=?1, updated_at=?2 WHERE id=?3", params![pw_hash, now_secs(), account_id]))?;
+    Ok(())
+}
+
+/// Settings → Account: a new recovery key (the old one stops working), after the password is
+/// confirmed, so someone at an unlocked PC can't take over the account with it.
+pub fn renew_recovery_key(db: &Db, account_id: &str, password: &str) -> AppResult<String> {
+    let (stored, _) = secrets_of(db, account_id)?;
+    if !verify(password, &stored) {
+        return Err(AppError::new("wrong_password", ""));
+    }
+    let key = new_recovery_key();
+    let rk_hash = hash(&normalize_recovery_key(&key))?;
+    db.with(|c| c.execute("UPDATE accounts SET recovery_hash=?1, updated_at=?2 WHERE id=?3", params![rk_hash, now_secs(), account_id]))?;
+    Ok(key)
+}
+
 /// Only the account id is remembered: the DB already lives in the user's own profile folder,
 /// so a separate session token would protect nothing extra.
 fn remember(db: &Db, account: &Account, keep: bool) -> AppResult<()> {

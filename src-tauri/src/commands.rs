@@ -301,6 +301,54 @@ pub fn warm_track(state: St, track: Track, quality: Quality) -> AppResult<bool> 
 const WARM_AT_ONCE: usize = 3;
 static WARMING: std::sync::LazyLock<Arc<tokio::sync::Semaphore>> = std::sync::LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(WARM_AT_ONCE)));
 
+#[tauri::command]
+pub async fn account_change_password(state: St<'_>, current_password: String, new_password: String) -> AppResult<()> {
+    let id = current(&state)?.id;
+    let db = state.db.clone();
+    blocking(move || accounts::change_password(&db, &id, &current_password, &new_password)).await
+}
+
+#[tauri::command]
+pub async fn account_new_recovery_key(state: St<'_>, password: String) -> AppResult<String> {
+    let id = current(&state)?.id;
+    let db = state.db.clone();
+    blocking(move || accounts::renew_recovery_key(&db, &id, &password)).await
+}
+
+/// Clears listening history: "hour", "day", "week" or "all".
+#[tauri::command]
+pub fn history_clear(state: St, range: String) -> AppResult<usize> {
+    let account = current(&state)?.id;
+    let since = match range.as_str() {
+        "hour" => Some(now_secs() - 3600),
+        "day" => Some(now_secs() - 86_400),
+        "week" => Some(now_secs() - 7 * 86_400),
+        "all" => None,
+        _ => return Err(AppError::new("invalid_input", "unknown range")),
+    };
+    crate::history::clear(&state.db, &account, since)
+}
+
+/// "Download" on the recovery key page: the page's text (the key with a short note) as a .txt
+/// file where the user chooses. False when the dialog was cancelled.
+#[tauri::command]
+pub async fn recovery_key_save(app: tauri::AppHandle, text: String) -> AppResult<bool> {
+    if text.is_empty() || text.len() > MAX_RECOVERY_FILE {
+        return Err(AppError::new("invalid_input", "bad recovery file"));
+    }
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    crate::util::file_dialog(&app).set_file_name(format!("{} recovery key.txt", crate::app_name())).add_filter("Text", &["txt"]).save_file(move |p| {
+        let _ = tx.send(p);
+    });
+    let Some(Some(path)) = rx.await.ok() else { return Ok(false) };
+    let path = path.into_path().map_err(|e| AppError::new("io", e.to_string()))?;
+    // Windows line endings, so Notepad on any Windows version shows it right.
+    tokio::fs::write(path, text.replace('\n', "\r\n")).await?;
+    Ok(true)
+}
+
+const MAX_RECOVERY_FILE: usize = 2048;
+
 /// Songs found by a line of their lyrics.
 #[tauri::command]
 pub async fn lyrics_search(state: St<'_>, query: String) -> AppResult<Vec<crate::lyrics::LyricHit>> {

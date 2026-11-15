@@ -37,7 +37,7 @@ export function font(ctx: CanvasRenderingContext2D, weight: number, size: number
   ctx.fillStyle = `rgba(255,255,255,${alpha})`;
 }
 
-function image(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, x: number, y: number, size: number, round: boolean, initial = ""): void {
+export function image(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, x: number, y: number, size: number, round: boolean, initial = ""): void {
   ctx.save();
   ctx.beginPath();
   if (round) ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2);
@@ -63,7 +63,7 @@ function image(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, x: n
 }
 
 /** The cover colors as soft light over the whole card, under an even dim (like the app). */
-function backdrop(ctx: CanvasRenderingContext2D, colors: Rgb[]): void {
+export function backdrop(ctx: CanvasRenderingContext2D, colors: Rgb[]): void {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
   const spots: [number, number, number][] = [
@@ -89,7 +89,7 @@ function backdrop(ctx: CanvasRenderingContext2D, colors: Rgb[]): void {
 }
 
 /** Splits text into at most `lines` lines that fit `max` pixels. */
-function wrap(ctx: CanvasRenderingContext2D, text: string, max: number, lines: number): string[] {
+export function wrap(ctx: CanvasRenderingContext2D, text: string, max: number, lines: number): string[] {
   const out: string[] = [];
   let line = "";
   for (const word of text.split(/\s+/)) {

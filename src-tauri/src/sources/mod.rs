@@ -31,6 +31,59 @@ pub struct ArtistRef {
     pub name: String,
 }
 
+/// How several artists are joined in one credit ("A & B", "A x B", "A feat. B").
+const ARTIST_JOINS: &[&str] = &[" feat. ", " ft. ", " featuring ", " Feat. ", " Ft. ", " x ", " X ", " & ", ", "];
+
+/// Splits one credit naming several artists into one name each, so each can be opened on its
+/// own. Names that are a single artist come back unchanged.
+pub fn split_credit(credit: &str) -> Vec<String> {
+    let mut parts = vec![credit.trim().to_string()];
+    for join in ARTIST_JOINS {
+        parts = parts.iter().flat_map(|p| p.split(join).map(|s| s.trim().to_string()).collect::<Vec<_>>()).collect();
+    }
+    parts.retain(|p| !p.is_empty());
+    if parts.is_empty() {
+        vec![credit.trim().to_string()]
+    } else {
+        parts
+    }
+}
+
+#[cfg(test)]
+mod credit_tests {
+    use super::*;
+
+    #[test]
+    fn splits_joined_credits() {
+        assert_eq!(split_credit("Calvin Harris & Dua Lipa"), vec!["Calvin Harris", "Dua Lipa"]);
+        assert_eq!(split_credit("A x B feat. C"), vec!["A", "B", "C"]);
+        assert_eq!(split_credit("Adele"), vec!["Adele"]);
+    }
+
+    #[test]
+    fn keeps_the_link_on_the_matching_part() {
+        let a = split_artists(vec![ArtistRef { id: Some("42".into()), name: "Anna & Ben".into() }], Some("ben"));
+        assert_eq!(a, vec![ArtistRef { id: None, name: "Anna".into() }, ArtistRef { id: Some("42".into()), name: "Ben".into() }]);
+    }
+}
+
+/// A source's artist list with joined credits split. A credit that links to a profile keeps
+/// that link on the part whose name matches it (or the first part); the other parts are found
+/// by name when clicked.
+pub fn split_artists(artists: Vec<ArtistRef>, linked_name: Option<&str>) -> Vec<ArtistRef> {
+    artists
+        .into_iter()
+        .flat_map(|a| {
+            let names = split_credit(&a.name);
+            if names.len() == 1 {
+                return vec![a];
+            }
+            let owner = linked_name.and_then(|n| names.iter().position(|p| p.eq_ignore_ascii_case(n))).unwrap_or(0);
+            names.into_iter().enumerate().map(|(i, name)| ArtistRef { id: if i == owner { a.id.clone() } else { None }, name }).collect()
+        })
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AlbumRef {

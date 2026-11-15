@@ -241,7 +241,7 @@ pub async fn status(state: &AppState) -> AccountStatus {
 /// The user's YouTube Music playlists ("Sync library").
 pub async fn playlists(state: &AppState) -> AppResult<Vec<Collection>> {
     with_client(state, async |rp| {
-        let page = rp.query().authenticated().music_saved_playlists().await.map_err(crate::sources::youtube::map_err)?;
+        let page = crate::sources::youtube::rp(rp.query().authenticated().music_saved_playlists()).await?;
         Ok(page.items.into_iter().filter(|p| !p.is_podcast).take(MAX_PLAYLISTS).map(crate::sources::youtube::map_playlist).collect())
     })
     .await
@@ -250,7 +250,7 @@ pub async fn playlists(state: &AppState) -> AppResult<Vec<Collection>> {
 /// A playlist's songs read as the user, so private playlists work too.
 pub async fn playlist_tracks(state: &AppState, id: &str) -> AppResult<Vec<Track>> {
     with_client(state, async |rp| {
-        let list = rp.query().authenticated().music_playlist(id).await.map_err(crate::sources::youtube::map_err)?;
+        let list = crate::sources::youtube::rp(rp.query().authenticated().music_playlist(id)).await?;
         Ok(list.tracks.items.into_iter().map(crate::sources::youtube::map_track).filter(Track::is_sane).collect())
     })
     .await

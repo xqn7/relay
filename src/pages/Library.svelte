@@ -92,6 +92,7 @@
       if (p.kind === "folder") library.nestFolder(p.id, null);
     },
   };
+  const noPlaylists = $derived(current === "playlists" && library.overview.playlists.length === 0 && library.overview.folders.length === 0);
 </script>
 
 <div class="head">
@@ -117,7 +118,7 @@
 {#if current === "artists"}
   <FollowedArtists />
 {:else}
-  <div class="grid stagger" class:root-over={dnd.target === "root"} use:dropTarget={rootDrop}>
+  <div class="grid stagger" class:none={noPlaylists} class:root-over={dnd.target === "root"} use:dropTarget={rootDrop}>
     {#if show(t("liked.title"))}
       <Tile title={t("liked.title")} subtitle={t("library.songs", { n: library.overview.likedCount })} icon="heart" onclick={() => ui.open({ name: "liked" })} />
     {/if}
@@ -166,7 +167,7 @@
       <Tile title={t("trash.title")} subtitle={t("trash.items", { n: trashCount })} icon="trash" onclick={() => ui.open({ name: "trash" })} />
     {/if}
   </div>
-  {#if current === "playlists" && library.overview.playlists.length === 0 && library.overview.folders.length === 0}
+  {#if noPlaylists}
     <EmptyState icon="list" title={t("library.emptyTitle")} body={t("library.emptyBody")}>
       <Button variant="primary" icon="download" onclick={() => dialogs.open({ kind: "import" })}>{t("library.import")}</Button>
     </EmptyState>
@@ -196,6 +197,10 @@
     min-height: 200px;
     border-radius: var(--r-lg);
     transition: background var(--t) var(--ease);
+  }
+  /* Nothing in it: no reserved height, so the "No playlists yet" message sits right under the tabs. */
+  .grid.none {
+    min-height: 0;
   }
   .root-over {
     background: rgba(var(--ink), 0.04);

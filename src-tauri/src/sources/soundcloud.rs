@@ -106,15 +106,15 @@ fn artwork(t: &Value) -> Option<String> {
 pub fn map_track(t: &Value) -> Option<Track> {
     let id = t.get("id")?.as_u64()?.to_string();
     let title = str_of(t, "title")?.trim().to_string();
-    let uploader = t.get("user").and_then(|u| str_of(u, "username")).unwrap_or("").to_string();
-    let artist = t.get("publisher_metadata").and_then(|m| str_of(m, "artist")).map(str::to_string).unwrap_or(uploader);
+    let uploader_name = t.get("user").and_then(|u| str_of(u, "username")).unwrap_or("").to_string();
+    let artist = t.get("publisher_metadata").and_then(|m| str_of(m, "artist")).map(str::to_string).unwrap_or_else(|| uploader_name.clone());
     let user_id = t.get("user").and_then(|u| u.get("id")).and_then(Value::as_u64).map(|i| i.to_string());
     let track = Track {
         id: Track::make_id(SOUNDCLOUD, &id),
         source: SOUNDCLOUD.into(),
         source_id: id,
         title,
-        artists: vec![ArtistRef { id: user_id, name: artist }],
+        artists: super::split_artists(vec![ArtistRef { id: user_id, name: artist }], Some(&uploader_name)),
         album: None,
         duration_ms: t.get("full_duration").or_else(|| t.get("duration")).and_then(Value::as_u64),
         cover: artwork(t),

@@ -199,6 +199,37 @@ pub fn backup_suggested_folder(app: tauri::AppHandle) -> AppResult<String> {
     Ok(base.join(crate::app_name()).to_string_lossy().into_owned())
 }
 
+/// Where a damaged library's backups most likely are: the default places (the chosen folder
+/// was stored in the damaged library itself).
+fn backup_places(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    use tauri::Manager;
+    let mut places: Vec<PathBuf> = std::env::var_os("OneDrive").map(PathBuf::from).into_iter().collect();
+    places.extend(app.path().document_dir().ok());
+    places.into_iter().map(|p| p.join(crate::app_name())).collect()
+}
+
+/// The library file was damaged at start: the name of the newest backup found, or "" when
+/// none was found. None when the library is fine.
+#[tauri::command]
+pub fn library_damaged(app: tauri::AppHandle, state: St) -> Option<String> {
+    if !state.library_damaged.load(std::sync::atomic::Ordering::SeqCst) {
+        return None;
+    }
+    Some(backup::newest_in(&backup_places(&app)).and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())).unwrap_or_default())
+}
+
+/// Restores the newest backup from the default places after a damaged start.
+#[tauri::command]
+pub async fn library_restore_newest(app: tauri::AppHandle, state: St<'_>) -> AppResult<usize> {
+    let path = backup::newest_in(&backup_places(&app)).ok_or_else(|| AppError::new("not_found", "no backup found"))?;
+    let n = backup::read_file(&state.db, &path).await?;
+    state.library_damaged.store(false, std::sync::atomic::Ordering::SeqCst);
+    state.streams.forget_all();
+    storage::sync(state.inner());
+    backup::schedule(state.inner());
+    Ok(n)
+}
+
 #[tauri::command]
 pub async fn backup_folder_pick(app: tauri::AppHandle, state: St<'_>) -> AppResult<Option<String>> {
     current(&state)?;
