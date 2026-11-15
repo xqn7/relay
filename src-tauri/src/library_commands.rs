@@ -492,7 +492,7 @@ pub fn local_open_folder(state: St) -> AppResult<()> {
 
 async fn pick_file(app: &tauri::AppHandle, label: &str, exts: &[&str]) -> AppResult<Option<PathBuf>> {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    crate::util::file_dialog(&app).add_filter(label, exts).pick_file(move |p| {
+    crate::util::file_dialog(app).add_filter(label, exts).pick_file(move |p| {
         let _ = tx.send(p);
     });
     match rx.await.ok().flatten() {

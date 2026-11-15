@@ -57,6 +57,17 @@ pub fn encode_query(s: &str) -> String {
     out
 }
 
+/// A file dialog owned by the main window, so it opens over Relay and can't end up behind it.
+pub fn file_dialog(app: &tauri::AppHandle) -> tauri_plugin_dialog::FileDialogBuilder<tauri::Wry> {
+    use tauri::Manager;
+    use tauri_plugin_dialog::DialogExt;
+    let dialog = app.dialog().file();
+    match app.get_webview_window("main") {
+        Some(window) => dialog.set_parent(&window),
+        None => dialog,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -81,16 +92,5 @@ mod tests {
     fn encodes_query() {
         assert_eq!(encode_query("a b&c"), "a%20b%26c");
         assert_eq!(encode_query("ы"), "%D1%8B");
-    }
-}
-
-/// A file dialog owned by the main window, so it opens over Relay and can't end up behind it.
-pub fn file_dialog(app: &tauri::AppHandle) -> tauri_plugin_dialog::FileDialogBuilder<tauri::Wry> {
-    use tauri::Manager;
-    use tauri_plugin_dialog::DialogExt;
-    let dialog = app.dialog().file();
-    match app.get_webview_window("main") {
-        Some(window) => dialog.set_parent(&window),
-        None => dialog,
     }
 }
