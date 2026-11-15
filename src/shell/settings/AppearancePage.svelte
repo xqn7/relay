@@ -4,6 +4,8 @@
   import { api, isAppError } from "../../lib/api";
   import Button from "../../lib/components/Button.svelte";
   import Field from "../../lib/components/Field.svelte";
+  import Icon from "../../lib/components/Icon.svelte";
+  import { menu } from "../../lib/stores/menu.svelte";
   import Segmented from "../../lib/components/Segmented.svelte";
   import Toggle from "../../lib/components/Toggle.svelte";
   import type { Key } from "../../lib/i18n/en";
@@ -47,6 +49,16 @@
     }
   }
 
+  function languageMenu(e: MouseEvent) {
+    // Below the button, whichever way it was pressed.
+    e.stopPropagation();
+    const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menu.show(
+      new MouseEvent("click", { clientX: box.left, clientY: box.bottom + 4 }),
+      languages.map((l, i) => ({ label: langName(l), icon: l === i18n.lang ? "check" : "globe", divider: i === 2, action: () => (i18n.lang = l) })),
+    );
+  }
+
   function setTranslateTo(lang: "en" | "de") {
     settings.set("translateTo", lang);
     if (v.translateLyrics) lyrics.translate();
@@ -58,7 +70,7 @@
   <div class="card">
     {#if visible("settings.language", "settings.languageDesc")}
       <SettingRow label={t("settings.language")} desc={t("settings.languageDesc")}>
-        <Segmented label={t("settings.language")} value={i18n.lang} options={languages.map((l) => ({ value: l, label: langName(l) }))} onchange={(l) => (i18n.lang = l)} />
+        <Button variant="secondary" icon="globe" onclick={languageMenu}>{langName(i18n.lang)}<Icon name="chevronDown" size={14} /></Button>
       </SettingRow>
     {/if}
     {#if visible("settings.theme", "settings.themeDesc")}
@@ -164,7 +176,7 @@
   </div>
 {/if}
 
-{#if visible("desktopLyrics.title", "desktopLyrics.desc") || visible("lockscreen.title", "lockscreen.desc")}
+{#if visible("desktopLyrics.title", "desktopLyrics.desc")}
   <h3>{t("settings.section.desktop")}</h3>
   <div class="card">
     {#if visible("desktopLyrics.title", "desktopLyrics.desc")}
@@ -188,11 +200,6 @@
           </Button>
         </SettingRow>
       {/if}
-    {/if}
-    {#if visible("lockscreen.title", "lockscreen.desc")}
-      <SettingRow label={t("lockscreen.title")} desc={t("lockscreen.desc")}>
-        <Toggle label={t("lockscreen.title")} checked={v.lockScreen} onchange={(x) => settings.set("lockScreen", x)} />
-      </SettingRow>
     {/if}
   </div>
 {/if}

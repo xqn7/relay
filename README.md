@@ -27,7 +27,7 @@ Windows SmartScreen may warn on first install because the installer isn't code-s
 certificate. Click "More info" → "Run anyway".
 
 On first start Relay downloads two helper programs in the background into its own data folder,
-each checked against its published SHA-256: yt-dlp (about 24 MB, plays YouTube audio) and ffmpeg
+each checked against its published SHA-256: yt-dlp (about 24 MB download, 63 MB unpacked, plays YouTube audio) and ffmpeg
 (about 115 MB, for video files, MP3 export and waveforms). Until yt-dlp is ready, songs play from
 SoundCloud.
 
@@ -65,6 +65,15 @@ window, or use **Add files** on the Local music page. Relay copies them into
 `Music\Relay\Local music` (changeable in Settings → Cache & Storage); originals are never moved
 or changed. Files you put into that folder yourself appear on their own.
 
+## Backups
+
+Your accounts, liked songs, playlists, followed artists, history and settings live in Relay's
+database on this PC. Turn on **automatic backup** (offered in the welcome setup, or Settings →
+Cache & Storage) and Relay keeps `Relay library.relaybackup` up to date in a folder you choose,
+a couple of minutes after every change, plus a dated copy each week. A OneDrive folder keeps it
+online as well. After a Windows reset or on a new PC, install Relay and click **Restore a
+backup** on the sign-in screen. Music files aren't part of the backup.
+
 ## When something stops working
 
 Settings → Cache & Storage → **Check connection** tests your internet and each service. Most
@@ -86,8 +95,14 @@ npm install
 npm start
 ```
 
-`npm start` runs Relay in development mode with live reload. `npm run app` builds the release
-app and its installer into `src-tauri\target\release\bundle\nsis\`.
+`npm start` runs Relay in development mode with live reload. `npm run app` builds a release
+exe at `src-tauri\target\release\relay.exe`, without an installer.
+
+Both run as **Relay Dev** (`src-tauri/tauri.dev.conf.json`), a separate app from the installed
+Relay: its own data folder (`%APPDATA%\app.relay.player.dev`), account, sign-ins and
+start-with-Windows entry, and it never updates itself. You can test changes while the installed
+Relay keeps your real library, and both can run at the same time. The installer and the
+updater only come from `scripts\release.ps1`, which builds the real Relay.
 
 Checks:
 

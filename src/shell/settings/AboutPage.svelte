@@ -18,6 +18,7 @@
   ] as const;
 
   let version = $state("");
+  let dev = $state(false);
   let appBusy = $state(false);
   let appStatus = $state("");
   // undefined while yt-dlp is still being asked (it takes a second or two to answer).
@@ -26,7 +27,7 @@
   let ytdlpStatus = $state("");
 
   onMount(() => {
-    api.desktopInfo().then((i) => (version = i.version)).catch(() => {});
+    api.desktopInfo().then((i) => ((version = i.version), (dev = i.dev))).catch(() => {});
     api.ytdlpVersion().then((v) => (ytdlp = v)).catch(() => (ytdlp = null));
   });
 
@@ -63,14 +64,16 @@
 <div class="head">
   <img class="logo-mark" src={logo} alt="" width="56" height="56" />
   <div>
-    <h3>Relay</h3>
+    <h3>{dev ? "Relay Dev" : "Relay"}</h3>
     {#if version}<p>{t("about.version", { version })}</p>{/if}
   </div>
 </div>
 
 <h3>{t("about.updates")}</h3>
 <div class="card">
-  {#if desktop.update}
+  {#if dev}
+    <SettingRow label={t("about.app")} desc={t("about.devUpdates")} />
+  {:else if desktop.update}
     <SettingRow label={t("update.readyShort", { version: desktop.update.version })} desc={t("update.sub")}>
       <Button variant="primary" onclick={() => desktop.update && dialogs.open({ kind: "update", info: desktop.update })}>{t("update.details")}</Button>
     </SettingRow>

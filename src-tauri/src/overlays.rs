@@ -35,6 +35,9 @@ pub struct Overlays {
     placed: Mutex<[Option<(i32, i32)>; 2]>,
     /// While unlocked, desktop lyrics can be dragged and resized; otherwise clicks pass through.
     lyrics_unlocked: AtomicBool,
+    /// The main window has lyrics to show right now (a song with synced lyrics is playing).
+    /// Without them the desktop lyrics window is closed, so it costs no memory.
+    lyrics_active: AtomicBool,
     save_seq: AtomicU64,
 }
 
@@ -206,7 +209,7 @@ fn round_corners(hwnd: HWND) {
 }
 
 fn is_windows_11() -> bool {
-    let build = crate::winreg::get_string(crate::winreg::Root::Machine, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuildNumber");
+    let build = crate::winreg::get_machine_string(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "CurrentBuildNumber");
     build.and_then(|b| b.parse::<u32>().ok()).is_some_and(|b| b >= 22000)
 }
 
@@ -401,9 +404,17 @@ fn sync_lyrics_now(app: &AppHandle) {
         crate::tray::refresh(app);
         return;
     }
+    let unlocked = lyrics_unlocked(&st);
+    if !unlocked && !st.desktop.overlays.lyrics_active.load(Ordering::SeqCst) {
+        if let Some(w) = app.get_webview_window(LYRICS) {
+            let _ = w.destroy();
+        }
+        crate::tray::refresh(app);
+        return;
+    }
     let Some(w) = get_or_build(app, LYRICS) else { return };
     place(app, &w, LYRICS);
-    set_click_through(&w, !lyrics_unlocked(&st));
+    set_click_through(&w, !unlocked);
     show_quietly(&w, true);
     crate::tray::refresh(app);
 }
@@ -418,9 +429,9 @@ fn set_lyrics_unlocked_now(app: &AppHandle, unlocked: bool) {
     let st = state(app);
     let unlocked = unlocked && pref_bool(&st, "desktopLyrics", false);
     st.desktop.overlays.lyrics_unlocked.store(unlocked, Ordering::SeqCst);
-    if let Some(w) = app.get_webview_window(LYRICS) {
-        set_click_through(&w, !unlocked);
-    }
+    // Unlocking opens the window even with nothing playing, so it can be placed; locking it
+    // again closes it if there's still nothing to show.
+    sync_lyrics_now(app);
     let _ = app.emit("lyrics-unlocked", unlocked);
     crate::tray::refresh(app);
 }
@@ -444,6 +455,13 @@ pub fn apply_mini_settings(app: &AppHandle) {
 
 pub fn sync_lyrics(app: &AppHandle) {
     later(app, sync_lyrics_now);
+}
+
+pub fn set_lyrics_active(app: &AppHandle, active: bool) {
+    let st = state(app);
+    if st.desktop.overlays.lyrics_active.swap(active, Ordering::SeqCst) != active {
+        sync_lyrics(app);
+    }
 }
 
 pub fn reset_position(app: &AppHandle, label: &'static str) {

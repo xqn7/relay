@@ -56,6 +56,13 @@
     e.preventDefault();
     player.setVolume(player.volume + (e.deltaY < 0 ? 0.05 : -0.05));
   }
+
+  /** A soft ring that spreads from the play button when it's pressed (once, not looping). */
+  function ripple(el: HTMLElement) {
+    el.classList.remove("rippling");
+    void el.offsetWidth;
+    el.classList.add("rippling");
+  }
 </script>
 
 <footer class="bar glass">
@@ -99,7 +106,7 @@
     {#if player.loading || player.buffering}
       <button class="play" aria-label={t("player.loading")} onclick={() => player.toggle()}><Spinner size={18} /></button>
     {:else}
-      <button class="play" aria-label={player.playing ? t("player.pause") : t("player.play")} disabled={!track} onclick={() => player.toggle()}>
+      <button class="play" aria-label={player.playing ? t("player.pause") : t("player.play")} disabled={!track} onclick={(e) => (ripple(e.currentTarget), player.toggle())}>
         <Icon name={player.playing ? "pause" : "play"} size={18} />
       </button>
     {/if}
@@ -252,6 +259,31 @@
     background: var(--primary);
     color: var(--on-primary);
     transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+  }
+  .play {
+    position: relative;
+  }
+  .play::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    box-shadow: 0 0 0 0 rgba(var(--ink), 0.35);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .play:global(.rippling)::after {
+    animation: ripple 520ms var(--ease);
+  }
+  @keyframes ripple {
+    from {
+      opacity: 1;
+      box-shadow: 0 0 0 0 rgba(var(--ink), 0.35);
+    }
+    to {
+      opacity: 0;
+      box-shadow: 0 0 0 12px rgba(var(--ink), 0);
+    }
   }
   .play:hover:not(:disabled) {
     background: var(--solid);

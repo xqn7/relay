@@ -88,7 +88,7 @@
           {#if top === null || top === undefined}
             <div class="loading"><Spinner size={16} /></div>
           {:else if top.length}
-            <TrackList tracks={top.slice(0, SONGS_SHOWN)} compact />
+            <TrackList tracks={top.slice(0, SONGS_SHOWN)} compact warmFirst={false} />
           {:else}
             <p class="none">{t("discover.noSongs")}</p>
           {/if}

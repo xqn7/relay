@@ -67,7 +67,7 @@
 
   <div class="body">
     <section class="now">
-      <div class="art">
+      <div class="art" class:breathing={player.playing}>
         {#if player.markers}<RangePanel docked />{/if}
         {#each [track] as tr (tr?.id)}
           {@const url = artUrl(tr)}
@@ -205,6 +205,18 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
+  }
+  /* While music plays, the cover breathes: a very slow, small zoom inside its frame. */
+  .breathing .art-cell img {
+    animation: breathe 7s ease-in-out infinite alternate;
+  }
+  @keyframes breathe {
+    to {
+      transform: scale(1.025);
+    }
+  }
+  :global(html[data-quality="low"]) .breathing .art-cell img {
+    animation: none;
   }
   .art-empty {
     display: grid;

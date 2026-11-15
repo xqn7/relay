@@ -56,6 +56,8 @@ class UiStore {
   settingsOpen = $state(false);
   /** The welcome setup after creating an account. */
   welcome = $state(false);
+  /** The helper downloads screen that follows the welcome setup. */
+  preparing = $state(false);
   queueOpen = $state(false);
   fullscreenOpen = $state(false);
   /** Files are being dragged over the window from outside. */

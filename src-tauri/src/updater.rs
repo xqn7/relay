@@ -140,6 +140,10 @@ pub fn check_later(state: &Arc<AppState>) {
 
 /// Looks for a newer release and downloads it. None = already up to date.
 pub async fn check(state: &Arc<AppState>) -> AppResult<Option<UpdateInfo>> {
+    // Relay Dev is updated by rebuilding it; installing a release would replace the real Relay.
+    if crate::is_dev() {
+        return Ok(None);
+    }
     let _busy = state.updater.busy.lock().await;
     if let Some((info, _)) = state.updater.ready.lock().unwrap_or_else(|p| p.into_inner()).clone() {
         return Ok(Some(info));

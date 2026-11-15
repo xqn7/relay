@@ -26,7 +26,7 @@
     </div>
     {#if action}<button class="action" onclick={action.run}>{action.label}</button>{/if}
   </div>
-  <div class="row" style:grid-template-rows="repeat({rows}, auto)">{@render children()}</div>
+  <div class="row stagger" style:grid-template-rows="repeat({rows}, auto)">{@render children()}</div>
 </section>
 
 <style>

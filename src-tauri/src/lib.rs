@@ -7,6 +7,7 @@ mod db;
 mod desktop;
 mod desktop_commands;
 mod discord;
+mod email_check;
 mod error;
 mod export;
 mod hardware;
@@ -16,7 +17,6 @@ mod importer;
 mod library;
 mod library_commands;
 mod local;
-mod lockscreen;
 mod lyrics;
 mod lyrics_commands;
 mod m3u;
@@ -136,7 +136,26 @@ pub(crate) fn request_quit(app: &AppHandle) {
 /// Device setting: the main window was maximized when last used.
 const MAXIMIZED_KEY: &str = "window.maximized";
 
+/// The build from the project folder runs as "Relay Dev" (tauri.dev.conf.json): its own data,
+/// sign-ins and start-with-Windows entry, and no self-updating, so it never touches the
+/// installed Relay.
+static DEV: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+pub fn is_dev() -> bool {
+    DEV.get().copied().unwrap_or(false)
+}
+
+/// The app's name as Windows shows it (window title, credentials, autostart, backup folder).
+pub fn app_name() -> &'static str {
+    if is_dev() {
+        "Relay Dev"
+    } else {
+        "Relay"
+    }
+}
+
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let _ = DEV.set(app.config().identifier.ends_with(".dev"));
     let handle = app.handle().clone();
     let data_dir = app.path().app_data_dir()?;
     let local_dir = app.path().app_local_data_dir()?;
@@ -147,7 +166,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
     let maximized = db.device_get(MAXIMIZED_KEY).ok().flatten().is_some_and(|v| v == "1");
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-        .title("Relay")
+        .title(app_name())
         .inner_size(1280.0, 800.0)
         .min_inner_size(940.0, 600.0)
         .decorations(false)
@@ -161,12 +180,18 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .visible(false)
         .on_page_load(move |window, payload| {
             // Started with Windows: stays in the tray (no window, no startup animation).
-            if payload.event() == tauri::webview::PageLoadEvent::Finished && !in_tray {
+            if payload.event() != tauri::webview::PageLoadEvent::Finished {
+                return;
+            }
+            if !in_tray {
                 if maximized {
                     let _ = window.maximize();
                 }
                 let _ = window.show();
             }
+            // The desktop lyrics window is a second web view; starting it only now keeps it
+            // from slowing down the main window's first appearance.
+            overlays::sync_lyrics(window.app_handle());
         })
         .build()?;
     taskbar::attach(&handle, window.hwnd()?);
@@ -186,7 +211,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         private: AtomicBool::new(false),
         user_dir: profile::dir(&data_dir),
         discover: mixes::DiscoverCache::default(),
-        desktop: desktop::Desktop::new(&data_dir, in_tray),
+        desktop: desktop::Desktop::new(in_tray),
         updater: updater::Updater::new(&local_dir),
         youtube_account: youtube_account::YouTubeAccount::load(),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
@@ -202,6 +227,12 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     let state = Arc::new(state);
     app.manage(state.clone());
+    {
+        let app = handle.clone();
+        state.tools.set_reporter(move |p| {
+            let _ = app.emit("tool-progress", p);
+        });
+    }
     audio_devices::watch(handle.clone());
     audio_devices::allow_output_names(&window);
     network::watch(&handle);
@@ -209,16 +240,16 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("tray icon failed: {e}");
     }
     os_events::start(handle.clone(), desktop::mini_shortcut(&state));
-    desktop::sync_autostart(&state);
-    youtube_account::sync_tools(&state);
-    overlays::sync_lyrics(&handle);
-    updater::check_later(&state);
     {
-        // After a crash, Relay's picture may still be on the lock screen.
+        // Not needed for the first frame: done right after, off the startup path.
         let state = state.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let _ = state.desktop.lockscreen.restore();
+            desktop::sync_autostart(&state);
+            youtube_account::sync_tools(&state);
         });
+    }
+    if !is_dev() {
+        updater::check_later(&state);
     }
     tauri::async_runtime::spawn(local::start(state.clone()));
     {
@@ -234,6 +265,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             network::probe(&state, true).await;
             storage::sync(&state);
             backup::schedule(&state);
+            backup::watch(&state);
             // ffmpeg a minute in, so the first video import or MP3 export doesn't wait for it.
             tokio::time::sleep(FFMPEG_PREFETCH_DELAY).await;
             if state.net.online() && !desktop::is_game(&state) {
@@ -317,6 +349,7 @@ pub fn run() {
             commands::autoplay_tracks,
             commands::prepare_track,
             commands::prefetch_track,
+            commands::warm_track,
             commands::queue_save,
             commands::queue_load,
             commands::media_track,
@@ -390,6 +423,7 @@ pub fn run() {
             storage_commands::backup_create,
             storage_commands::backup_restore,
             storage_commands::backup_folder_pick,
+            storage_commands::backup_suggested_folder,
             storage_commands::cover_hd,
             storage_commands::cover_save,
             storage_commands::cover_drag_prepare,
@@ -434,11 +468,11 @@ pub fn run() {
             desktop_commands::main_window_show,
             desktop_commands::mini_toggle,
             desktop_commands::lyrics_unlock,
+            desktop_commands::lyrics_active,
+            desktop_commands::tools_prepare,
             desktop_commands::ui_labels,
             desktop_commands::hardware_info,
             desktop_commands::discord_preview,
-            desktop_commands::lockscreen_set,
-            desktop_commands::lockscreen_restore,
             desktop_commands::update_check,
             desktop_commands::update_install,
             desktop_commands::ytdlp_version,

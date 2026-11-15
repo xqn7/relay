@@ -1,13 +1,15 @@
-<!-- Welcome setup, shown once right after an account is created: import music, pick the
-     background, choose visual quality. Every choice saves at once and stays changeable in
-     Settings, so Skip and closing the app lose nothing. -->
+<!-- Welcome setup, shown once right after an account is created: import music, set up the
+     automatic backup (or restore one), pick the background, choose visual quality. Every
+     choice saves at once and stays changeable in Settings, so Skip and closing the app lose
+     nothing. -->
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
   import BackgroundImage from "../../lib/backdrop/BackgroundImage.svelte";
   import logo from "../../lib/assets/logo.svg";
   import Button from "../../lib/components/Button.svelte";
   import Icon from "../../lib/components/Icon.svelte";
-  import type { VisualQuality } from "../../lib/api";
+  import Toggle from "../../lib/components/Toggle.svelte";
+  import { api, isAppError, type VisualQuality } from "../../lib/api";
   import { t } from "../../lib/i18n/index.svelte";
   import { pickImage } from "../../lib/profileActions";
   import { backgrounds } from "../../lib/stores/backgrounds.svelte";
@@ -16,9 +18,9 @@
   import { settings, type BackgroundMode } from "../../lib/stores/settings.svelte";
   import { visual } from "../../lib/stores/visual.svelte";
 
-  let { onDone }: { onDone: () => void } = $props();
+  let { onDone, onSignOut }: { onDone: () => void; onSignOut: () => void } = $props();
 
-  const STEPS = 3;
+  const STEPS = 4;
   const QUALITIES: VisualQuality[] = ["high", "medium", "low"];
   const MODES: { value: BackgroundMode; label: "bg.cover" | "bg.image" | "bg.off"; desc: "welcome.bg.coverDesc" | "welcome.bg.imageDesc" | "welcome.bg.offDesc" }[] = [
     { value: "cover", label: "bg.cover", desc: "welcome.bg.coverDesc" },
@@ -37,6 +39,48 @@
   function go(next: number) {
     direction = next > step ? 1 : -1;
     step = next;
+    if (step === 1) suggestBackup();
+  }
+
+  // ---- backup step ----
+  let restoredCount = $state(0);
+  let backupError = $state("");
+
+  /** Backups are on by default, in the suggested folder (OneDrive if set up, else Documents). */
+  async function suggestBackup() {
+    if (settings.values.backupFolder) return;
+    try {
+      settings.set("backupFolder", await api.backupSuggestedFolder());
+      settings.set("autoBackup", true);
+    } catch (e) {
+      console.error("no backup folder suggestion", e);
+    }
+  }
+
+  async function pickBackupFolder() {
+    try {
+      const picked = await api.backupFolderPick();
+      if (picked) {
+        settings.set("backupFolder", picked);
+        settings.set("autoBackup", true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function toggleBackup(on: boolean) {
+    if (on && !settings.values.backupFolder) return pickBackupFolder();
+    settings.set("autoBackup", on);
+  }
+
+  async function restoreBackup() {
+    backupError = "";
+    try {
+      restoredCount = await api.backupRestore();
+    } catch (e) {
+      backupError = isAppError(e) && e.code === "bad_file" ? t("backup.badFile") : t("error.generic");
+    }
   }
 
   function importLink(e: SubmitEvent) {
@@ -100,6 +144,35 @@
             </button>
             {#if imported}<p class="done"><Icon name="check" size={14} />{t("welcome.import.count", { n: imported })}</p>{/if}
           {:else if step === 1}
+            <h1>{t("welcome.backup.title")}</h1>
+            <p class="sub">{t("welcome.backup.sub")}</p>
+            <div class="backup">
+              <div class="backup-row">
+                <span class="text">
+                  <b>{t("welcome.backup.auto")}</b>
+                  <small>{t("welcome.backup.autoDesc")}</small>
+                </span>
+                <Toggle label={t("welcome.backup.auto")} checked={settings.values.autoBackup} onchange={toggleBackup} />
+              </div>
+              {#if settings.values.autoBackup && settings.values.backupFolder}
+                <div class="backup-row folder">
+                  <Icon name="folder" size={16} />
+                  <span class="path truncate" title={settings.values.backupFolder}>{settings.values.backupFolder}</span>
+                  <Button variant="ghost" small onclick={pickBackupFolder}>{t("settings.change")}</Button>
+                </div>
+              {/if}
+            </div>
+            <div class="have">
+              {#if restoredCount}
+                <p class="done"><Icon name="check" size={14} />{t("welcome.backup.restored", { n: restoredCount })}</p>
+                <Button variant="secondary" small icon="logout" onclick={onSignOut}>{t("settings.signOut")}</Button>
+              {:else}
+                <span>{t("welcome.backup.have")}</span>
+                <Button variant="secondary" small icon="download" onclick={restoreBackup}>{t("welcome.backup.restore")}</Button>
+              {/if}
+            </div>
+            {#if backupError}<p class="error"><Icon name="alert" size={14} />{backupError}</p>{/if}
+          {:else if step === 2}
             <h1>{t("welcome.bg.title")}</h1>
             <p class="sub">{t("welcome.bg.sub")}</p>
             <div class="preview" aria-hidden="true">
@@ -433,6 +506,50 @@
     font-style: normal;
     font-weight: 600;
     vertical-align: 1px;
+  }
+  .backup {
+    width: 100%;
+    border-radius: var(--r-md);
+    background: var(--glass);
+  }
+  .backup-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+  }
+  .backup-row + .backup-row {
+    border-top: 1px solid var(--hairline);
+  }
+  .folder {
+    padding: 8px 8px 8px 14px;
+    color: var(--text-3);
+  }
+  .path {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+  .have {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+  .have .done {
+    flex: 1;
+  }
+  .error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
   }
   .reason {
     margin: 0;

@@ -8,7 +8,7 @@ use windows::Win32::Security::Credentials::{CredDeleteW, CredFree, CredReadW, Cr
 const MAX_SECRET_BYTES: usize = 2048;
 
 fn target(name: &str) -> Vec<u16> {
-    format!("Relay/{name}").encode_utf16().chain(Some(0)).collect()
+    format!("{}/{name}", crate::app_name()).encode_utf16().chain(Some(0)).collect()
 }
 
 pub fn get(name: &str) -> Option<String> {

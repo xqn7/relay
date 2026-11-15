@@ -169,7 +169,9 @@
 <DialogHost />
 <IdleScreen />
 {#if ui.welcome}
-  {#await import("./welcome/WelcomeSetup.svelte") then m}<m.default onDone={() => (ui.welcome = false)} />{/await}
+  {#await import("./welcome/WelcomeSetup.svelte") then m}<m.default onDone={() => ((ui.welcome = false), (ui.preparing = true))} onSignOut={() => ((ui.welcome = false), onSignOut())} />{/await}
+{:else if ui.preparing}
+  {#await import("./welcome/PrepareScreen.svelte") then m}<m.default onDone={() => (ui.preparing = false)} />{/await}
 {/if}
 {#if dnd.payload}
   <div class="ghost glass" style:left="{dnd.x + 14}px" style:top="{dnd.y + 10}px">{dnd.payload.label}</div>

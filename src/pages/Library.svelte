@@ -117,7 +117,7 @@
 {#if current === "artists"}
   <FollowedArtists />
 {:else}
-  <div class="grid" class:root-over={dnd.target === "root"} use:dropTarget={rootDrop}>
+  <div class="grid stagger" class:root-over={dnd.target === "root"} use:dropTarget={rootDrop}>
     {#if show(t("liked.title"))}
       <Tile title={t("liked.title")} subtitle={t("library.songs", { n: library.overview.likedCount })} icon="heart" onclick={() => ui.open({ name: "liked" })} />
     {/if}

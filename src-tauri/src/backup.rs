@@ -2,6 +2,10 @@
 //! one JSON file and read back on this or another PC. Music files and the caches are not part
 //! of it. Rows are stored column by column, so backups from older or newer versions still load
 //! (unknown columns are skipped, missing ones get their defaults).
+//!
+//! Automatic backup (a folder the user picks): "Relay library.relaybackup" is rewritten a
+//! couple of minutes after the library changes, so a reinstalled PC loses at most those
+//! minutes; dated weekly copies are kept as well.
 
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
@@ -12,7 +16,7 @@ use rusqlite::{params_from_iter, Connection};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use std::time::Duration;
 
 const FORMAT: u64 = 1;
@@ -23,6 +27,10 @@ const WEEK_SECS: i64 = 7 * 24 * 3600;
 const KEEP_AUTO: usize = 4;
 const LAST_AUTO_KEY: &str = "backup_last_auto";
 const AUTO_PREFIX: &str = "Relay backup ";
+/// The always-current backup in the automatic backup folder.
+pub const CURRENT_NAME: &str = "Relay library.relaybackup";
+/// Changes are collected this long before the current backup is rewritten.
+const SETTLE: Duration = Duration::from_secs(120);
 
 /// Parents before children, so foreign keys hold while restoring.
 const TABLES: &[&str] = &[
@@ -221,7 +229,49 @@ pub fn date_string(secs: i64) -> String {
     format!("{y:04}-{m:02}-{d:02}")
 }
 
-// ---- weekly backup ------------------------------------------------------------------------
+// ---- automatic backup ---------------------------------------------------------------------
+
+static CHANGED: LazyLock<tokio::sync::Notify> = LazyLock::new(tokio::sync::Notify::new);
+
+/// Song details are stored on every lookup; they only matter through likes, playlists and
+/// the rest, which change with them.
+fn worth_backing_up(table: &str) -> bool {
+    table != "tracks" && TABLES.contains(&table)
+}
+
+/// Rewrites the current backup a little while after the library changes. Driven by SQLite's
+/// update hook, so nothing polls.
+pub fn watch(state: &Arc<AppState>) {
+    let hooked = state.db.with(|c| {
+        c.update_hook(Some(|_: rusqlite::hooks::Action, _: &str, table: &str, _: i64| {
+            if worth_backing_up(table) {
+                CHANGED.notify_one();
+            }
+        }));
+        Ok(())
+    });
+    if let Err(e) = hooked {
+        eprintln!("backup change watch unavailable: {e}");
+        return;
+    }
+    let state = state.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            CHANGED.notified().await;
+            tokio::time::sleep(SETTLE).await;
+            if let Some(folder) = auto_folder(&state) {
+                if let Err(e) = write_current(&state, &folder).await {
+                    eprintln!("automatic backup failed: {e}");
+                }
+            }
+        }
+    });
+}
+
+async fn write_current(state: &AppState, folder: &Path) -> AppResult<()> {
+    tokio::fs::create_dir_all(folder).await?;
+    write_file(&state.db, &folder.join(CURRENT_NAME)).await
+}
 
 /// Bumped whenever the schedule changes, so an older sleeping timer knows to stop.
 static GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -239,6 +289,12 @@ pub fn schedule(state: &Arc<AppState>) {
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let state = state.clone();
     tauri::async_runtime::spawn(async move {
+        // Turned on, a new folder, or a new start: the current backup is written right away.
+        if let Some(folder) = auto_folder(&state) {
+            if let Err(e) = write_current(&state, &folder).await {
+                eprintln!("automatic backup failed: {e}");
+            }
+        }
         loop {
             let Some(folder) = auto_folder(&state) else { return };
             let last: i64 = state.db.device_get(LAST_AUTO_KEY).ok().flatten().and_then(|v| v.parse().ok()).unwrap_or(0);

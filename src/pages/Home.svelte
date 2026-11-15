@@ -76,6 +76,8 @@
             title={track.title}
             subtitle={artistLine(track)}
             cover={track.cover}
+            warm={track}
+            playing={player.playing && player.current?.track.id === track.id}
             onclick={() => player.playTracks(recent, i)}
             onmenu={(e) => openTrackMenu(e, { tracks: recent, index: i })} />
         {/each}

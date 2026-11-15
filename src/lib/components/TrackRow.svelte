@@ -6,13 +6,16 @@
   import { library } from "../stores/library.svelte";
   import { offline } from "../stores/offline.svelte";
   import { player } from "../stores/player.svelte";
+  import { warmCancel, warmNow, warmSoon } from "../player/warm";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
   import LikeButton from "./LikeButton.svelte";
+  import PlayingBars from "./PlayingBars.svelte";
   import SourceBadge from "./SourceBadge.svelte";
 
   let {
     track,
+    next,
     selected = false,
     compact = false,
     showAlbum = false,
@@ -23,6 +26,8 @@
     onpress,
   }: {
     track: Track;
+    /** The song below this one: looked up too when the pointer rests here. */
+    next?: Track;
     selected?: boolean;
     compact?: boolean;
     showAlbum?: boolean;
@@ -63,12 +68,14 @@
   onclick={(e) => onselect?.(e)}
   ondblclick={onactivate}
   onkeydown={onKey}
-  onpointerdown={(e) => onpress?.(e)}
+  onpointerenter={() => warmSoon(track, next)}
+  onpointerleave={warmCancel}
+  onpointerdown={(e) => (warmNow(track), onpress?.(e))}
   oncontextmenu={onmenu}>
   <div class="art">
     <Cover src={track.cover} size={compact ? 40 : 44} />
     {#if isCurrent && player.playing}
-      <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+      <PlayingBars />
     {/if}
   </div>
   <div class="text">
@@ -214,40 +221,6 @@
   .more:hover {
     background: var(--hover);
     color: var(--text);
-  }
-  .eq {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: flex-end;
-    justify-content: center;
-    gap: 2px;
-    padding-bottom: 12px;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.45);
-  }
-  .eq i {
-    width: 3px;
-    height: 14px;
-    border-radius: 2px;
-    background: #fff;
-    transform-origin: bottom;
-    animation: bounce 0.9s ease-in-out infinite;
-  }
-  .eq i:nth-child(2) {
-    animation-delay: -0.3s;
-  }
-  .eq i:nth-child(3) {
-    animation-delay: -0.6s;
-  }
-  @keyframes bounce {
-    0%,
-    100% {
-      transform: scaleY(0.3);
-    }
-    50% {
-      transform: scaleY(1);
-    }
   }
   @media (max-width: 1100px) {
     .row.with-album {

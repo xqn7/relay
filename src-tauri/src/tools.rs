@@ -8,13 +8,22 @@ use crate::sources::{Quality, ResolvedStream, StreamKind};
 use crate::util::{now_secs, query_param};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
 const YTDLP_EXE: &str = "yt-dlp.exe";
+/// Helper names in progress reports.
+pub const YTDLP_TOOL: &str = "yt-dlp";
+pub const FFMPEG_TOOL: &str = "ffmpeg";
+/// yt-dlp's folder build. The single-file yt-dlp.exe unpacks itself into a temp folder on
+/// every run, which adds about half a second to each song; the folder build starts at once.
+const YTDLP_ZIP: &str = "yt-dlp_win.zip";
+/// The folder build lives here, with the zip's SHA-256 in HASH_FILE for update checks.
+const YTDLP_DIR: &str = "yt-dlp";
+const HASH_FILE: &str = "release.sha256";
 const FFMPEG_EXE: &str = "ffmpeg.exe";
 /// Gyan's "essentials" build (the one ffmpeg.org links for Windows). Its GitHub mirror is
 /// several times faster than gyan.dev and publishes each file's SHA-256; gyan.dev is the backup.
@@ -27,6 +36,32 @@ const PART_RETRIES: u32 = 2;
 /// Windows: run console programs without flashing a console window.
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
+/// Where a helper's download stands, for the first-start screen.
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Phase {
+    Waiting,
+    Downloading,
+    /// Downloaded and checked, being unpacked.
+    Unpacking,
+    Ready,
+    Failed,
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolProgress {
+    pub tool: &'static str,
+    pub phase: Phase,
+    pub done: u64,
+    pub total: u64,
+}
+
+type Reporter = Box<dyn Fn(&ToolProgress) + Send + Sync>;
+
+/// Progress goes out a few times a second while a download runs, not per chunk.
+const REPORT_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
+
 pub struct Tools {
     dir: PathBuf,
     http: Arc<Http>,
@@ -35,6 +70,9 @@ pub struct Tools {
     installing: AtomicBool,
     /// The YouTube sign-in as a Netscape cookie file's text, while "Play through your account" is on.
     cookies: std::sync::Mutex<Option<String>>,
+    /// The latest progress of each helper, and who hears about changes (the UI, as an event).
+    progress: std::sync::Mutex<Vec<ToolProgress>>,
+    reporter: std::sync::OnceLock<Reporter>,
 }
 
 /// A download or unpack cut off by closing the app leaves files behind that are never
@@ -43,10 +81,9 @@ fn remove_unfinished(dir: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().into_owned();
-        if name.contains(".download") {
-            let _ = std::fs::remove_file(entry.path());
-        } else if name == "ffmpeg-unpack" {
-            let _ = std::fs::remove_dir_all(entry.path());
+        if name.contains(".download") || name.ends_with("-unpack") {
+            let path = entry.path();
+            let _ = if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
         }
     }
 }
@@ -103,6 +140,11 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
     None
 }
 
+/// Windows' own tar.exe, which also unpacks zip files.
+fn tar_exe() -> PathBuf {
+    std::env::var("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe")).unwrap_or_else(|_| PathBuf::from("tar.exe"))
+}
+
 fn is_sha256(h: &str) -> bool {
     h.len() == 64 && h.chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -144,12 +186,13 @@ fn sha256_file(path: &Path) -> AppResult<String> {
     Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }
 
-async fn download_whole(client: &reqwest::Client, url: &str, dest: &Path) -> AppResult<()> {
+async fn download_whole(client: &reqwest::Client, url: &str, dest: &Path, done: &AtomicU64) -> AppResult<()> {
     let mut resp = client.get(url).send().await?;
     check_status(&resp)?;
     let mut file = tokio::fs::File::create(dest).await?;
     while let Some(chunk) = resp.chunk().await? {
         file.write_all(&chunk).await?;
+        done.fetch_add(chunk.len() as u64, Ordering::Relaxed);
     }
     file.flush().await?;
     Ok(())
@@ -157,12 +200,12 @@ async fn download_whole(client: &reqwest::Client, url: &str, dest: &Path) -> App
 
 /// Fetches the file in parallel ranges straight into their places in `dest`. A part that
 /// breaks off resumes where it stopped.
-async fn download_parts(client: &reqwest::Client, url: &str, size: u64, dest: &Path) -> AppResult<()> {
+async fn download_parts(client: &reqwest::Client, url: &str, size: u64, dest: &Path, done: Arc<AtomicU64>) -> AppResult<()> {
     tokio::fs::File::create(dest).await?.set_len(size).await?;
     let mut tasks = tokio::task::JoinSet::new();
     for (start, end) in split_ranges(size, PARTS) {
-        let (client, url, dest) = (client.clone(), url.to_string(), dest.to_path_buf());
-        tasks.spawn(async move { download_range(&client, &url, &dest, start, end).await });
+        let (client, url, dest, done) = (client.clone(), url.to_string(), dest.to_path_buf(), done.clone());
+        tasks.spawn(async move { download_range(&client, &url, &dest, start, end, &done).await });
     }
     while let Some(done) = tasks.join_next().await {
         done.map_err(|e| AppError::new("internal", e.to_string()))??;
@@ -170,7 +213,7 @@ async fn download_parts(client: &reqwest::Client, url: &str, size: u64, dest: &P
     Ok(())
 }
 
-async fn download_range(client: &reqwest::Client, url: &str, dest: &Path, start: u64, end: u64) -> AppResult<()> {
+async fn download_range(client: &reqwest::Client, url: &str, dest: &Path, start: u64, end: u64, done: &AtomicU64) -> AppResult<()> {
     let mut file = tokio::fs::OpenOptions::new().write(true).open(dest).await?;
     let mut at = start;
     let mut tries = 0;
@@ -186,6 +229,7 @@ async fn download_range(client: &reqwest::Client, url: &str, dest: &Path, start:
                 let chunk = &chunk[..chunk.len().min(room)];
                 file.write_all(chunk).await?;
                 at += chunk.len() as u64;
+                done.fetch_add(chunk.len() as u64, Ordering::Relaxed);
             }
             Ok(())
         }
@@ -217,15 +261,63 @@ impl Tools {
             ffmpeg_lock: Mutex::new(()),
             installing: AtomicBool::new(false),
             cookies: std::sync::Mutex::new(None),
+            progress: std::sync::Mutex::new(Vec::new()),
+            reporter: std::sync::OnceLock::new(),
         }
+    }
+
+    pub fn set_reporter(&self, reporter: impl Fn(&ToolProgress) + Send + Sync + 'static) {
+        let _ = self.reporter.set(Box::new(reporter));
+    }
+
+    fn report(&self, tool: &'static str, phase: Phase, done: u64, total: u64) {
+        let p = ToolProgress { tool, phase, done, total };
+        {
+            let mut all = self.progress.lock().unwrap_or_else(|e| e.into_inner());
+            all.retain(|x| x.tool != tool);
+            all.push(p.clone());
+        }
+        if let Some(r) = self.reporter.get() {
+            r(&p);
+        }
+    }
+
+    /// Both helpers as they stand: ready on disk, or the last reported progress.
+    pub fn status(&self) -> Vec<ToolProgress> {
+        let known = self.progress.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        [(YTDLP_TOOL, self.ytdlp_dir().join(YTDLP_EXE).exists()), (FFMPEG_TOOL, self.ffmpeg_path().exists())]
+            .into_iter()
+            .map(|(tool, ready)| match (ready, known.iter().find(|p| p.tool == tool)) {
+                (true, _) => ToolProgress { tool, phase: Phase::Ready, done: 0, total: 0 },
+                (false, Some(p)) => p.clone(),
+                (false, None) => ToolProgress { tool, phase: Phase::Waiting, done: 0, total: 0 },
+            })
+            .collect()
+    }
+
+    /// Starts every helper download that isn't done (the first-start screen).
+    pub fn prepare_all(self: &Arc<Self>) {
+        self.warm_up();
+        self.prefetch_ffmpeg();
     }
 
     pub fn set_cookies(&self, file: Option<String>) {
         *self.cookies.lock().unwrap_or_else(|p| p.into_inner()) = file;
     }
 
+    fn ytdlp_dir(&self) -> PathBuf {
+        self.dir.join(YTDLP_DIR)
+    }
+
+    /// The folder build, or the single-file yt-dlp.exe older versions installed until the
+    /// folder build has arrived.
     fn ytdlp_path(&self) -> PathBuf {
-        self.dir.join(YTDLP_EXE)
+        let folder = self.ytdlp_dir().join(YTDLP_EXE);
+        if folder.exists() {
+            folder
+        } else {
+            self.dir.join(YTDLP_EXE)
+        }
     }
 
     pub fn ytdlp_ready(&self) -> bool {
@@ -235,28 +327,72 @@ impl Tools {
     /// Starts downloading yt-dlp in the background if it's missing. YouTube is the main
     /// catalog, so it's needed for almost the first song; fetching it early keeps that song fast.
     pub fn warm_up(self: &Arc<Self>) {
-        if self.ytdlp_path().exists() || self.installing.swap(true, Ordering::SeqCst) {
+        if self.ytdlp_dir().join(YTDLP_EXE).exists() || self.installing.swap(true, Ordering::SeqCst) {
             return;
         }
         let tools = self.clone();
         tauri::async_runtime::spawn(async move {
             let _guard = tools.install_lock.lock().await;
-            if let Err(e) = tools.install_ytdlp().await {
-                eprintln!("yt-dlp download failed: {e}");
+            match tools.install_ytdlp().await {
+                Ok(()) => tools.report(YTDLP_TOOL, Phase::Ready, 0, 0),
+                Err(e) => {
+                    eprintln!("yt-dlp download failed: {e}");
+                    tools.report(YTDLP_TOOL, Phase::Failed, 0, 0);
+                }
             }
             tools.installing.store(false, Ordering::SeqCst);
         });
     }
 
-    /// Fetches the latest yt-dlp.exe and checks it against the published checksum.
+    /// Fetches yt-dlp's latest folder build, checks it against the published checksum and
+    /// unpacks it. A single-file yt-dlp.exe from older versions is removed afterwards.
     async fn install_ytdlp(&self) -> AppResult<()> {
         tokio::fs::create_dir_all(&self.dir).await?;
+        let expected = self.ytdlp_expected().await?;
+        self.install_ytdlp_build(&expected).await?;
+        let _ = tokio::fs::remove_file(self.dir.join(YTDLP_EXE)).await;
+        Ok(())
+    }
+
+    async fn ytdlp_expected(&self) -> AppResult<String> {
         let sums = self.http.get_text(&format!("{YTDLP_BASE}/SHA2-256SUMS")).await?;
-        let expected = expected_hash(&sums, YTDLP_EXE)
-            .ok_or_else(|| AppError::new("bad_response", "yt-dlp checksum list has no entry for yt-dlp.exe"))?;
-        let tmp = self.dir.join("yt-dlp.download");
-        self.download_verified("yt-dlp", &format!("{YTDLP_BASE}/{YTDLP_EXE}"), &expected, &tmp).await?;
-        tokio::fs::rename(&tmp, self.ytdlp_path()).await?;
+        expected_hash(&sums, YTDLP_ZIP).ok_or_else(|| AppError::new("bad_response", "yt-dlp checksum list has no entry for the Windows build"))
+    }
+
+    /// Downloads and unpacks the folder build next to the current one, then swaps the
+    /// folders. A running yt-dlp keeps its folder from being renamed, so the swap waits for it.
+    async fn install_ytdlp_build(&self, expected: &str) -> AppResult<()> {
+        let zip = self.dir.join("yt-dlp.download.zip");
+        self.download_verified("yt-dlp", &format!("{YTDLP_BASE}/{YTDLP_ZIP}"), expected, &zip).await?;
+        let unpack = self.dir.join("yt-dlp-unpack");
+        let _ = tokio::fs::remove_dir_all(&unpack).await;
+        tokio::fs::create_dir_all(&unpack).await?;
+        let out = tokio::process::Command::new(tar_exe()).arg("-xf").arg(&zip).arg("-C").arg(&unpack).creation_flags(CREATE_NO_WINDOW).output().await?;
+        let _ = tokio::fs::remove_file(&zip).await;
+        if !out.status.success() || !unpack.join(YTDLP_EXE).exists() {
+            let _ = tokio::fs::remove_dir_all(&unpack).await;
+            return Err(AppError::new("install_failed", format!("could not unpack yt-dlp: {}", String::from_utf8_lossy(&out.stderr).trim())));
+        }
+        tokio::fs::write(unpack.join(HASH_FILE), expected).await?;
+        let dir = self.ytdlp_dir();
+        let old = self.dir.join("yt-dlp.old.download");
+        let _ = tokio::fs::remove_dir_all(&old).await;
+        let mut tries = 0;
+        while dir.exists() {
+            match tokio::fs::rename(&dir, &old).await {
+                Ok(()) => break,
+                Err(_) if tries < 20 => {
+                    tries += 1;
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                }
+                Err(e) => {
+                    let _ = tokio::fs::remove_dir_all(&unpack).await;
+                    return Err(e.into());
+                }
+            }
+        }
+        tokio::fs::rename(&unpack, &dir).await?;
+        let _ = tokio::fs::remove_dir_all(&old).await;
         Ok(())
     }
 
@@ -271,14 +407,27 @@ impl Tools {
         // Signed redirect targets (GitHub) are fetched directly by every part.
         let final_url = probe.url().to_string();
         drop(probe);
-        let result = match total {
-            Some(size) if ranged && size > SPLIT_ABOVE => download_parts(&self.http.client, &final_url, size, dest).await,
-            _ => download_whole(&self.http.client, &final_url, dest).await,
+        let size = total.unwrap_or(0);
+        let done = Arc::new(AtomicU64::new(0));
+        let download = async {
+            match total {
+                Some(size) if ranged && size > SPLIT_ABOVE => download_parts(&self.http.client, &final_url, size, dest, done.clone()).await,
+                _ => download_whole(&self.http.client, &final_url, dest, &done).await,
+            }
+        };
+        tokio::pin!(download);
+        let result = loop {
+            self.report(tool, Phase::Downloading, done.load(Ordering::Relaxed), size);
+            tokio::select! {
+                r = &mut download => break r,
+                _ = tokio::time::sleep(REPORT_EVERY) => {}
+            }
         };
         if let Err(e) = result {
             let _ = tokio::fs::remove_file(dest).await;
             return Err(e);
         }
+        self.report(tool, Phase::Unpacking, size, size);
         let path = dest.to_path_buf();
         let actual = tokio::task::spawn_blocking(move || sha256_file(&path)).await.map_err(|e| AppError::new("internal", e.to_string()))??;
         if actual != expected {
@@ -295,31 +444,18 @@ impl Tools {
         (out.status.success() && !v.is_empty() && v.len() < 40).then_some(v)
     }
 
-    /// Replaces yt-dlp with the latest release when the published file differs from ours.
+    /// Replaces yt-dlp with the latest release when the published build differs from ours.
     /// Returns whether anything changed.
     pub async fn update_ytdlp(&self) -> AppResult<bool> {
         let _guard = self.install_lock.lock().await;
-        let sums = self.http.get_text(&format!("{YTDLP_BASE}/SHA2-256SUMS")).await?;
-        let expected = expected_hash(&sums, YTDLP_EXE)
-            .ok_or_else(|| AppError::new("bad_response", "yt-dlp checksum list has no entry for yt-dlp.exe"))?;
-        let exe = self.ytdlp_path();
-        if let Ok(current) = tokio::fs::read(&exe).await {
-            let have: String = Sha256::digest(&current).iter().map(|b| format!("{b:02x}")).collect();
-            if have == expected {
-                return Ok(false);
-            }
+        let expected = self.ytdlp_expected().await?;
+        let have = tokio::fs::read_to_string(self.ytdlp_dir().join(HASH_FILE)).await.unwrap_or_default();
+        if have.trim() == expected {
+            return Ok(false);
         }
         tokio::fs::create_dir_all(&self.dir).await?;
-        let tmp = self.dir.join("yt-dlp.download");
-        self.download_verified("yt-dlp", &format!("{YTDLP_BASE}/{YTDLP_EXE}"), &expected, &tmp).await?;
-        // A running yt-dlp keeps its file locked against deletion, but it can be renamed away.
-        let old = self.dir.join("yt-dlp.old.download");
-        let _ = tokio::fs::remove_file(&old).await;
-        if exe.exists() {
-            tokio::fs::rename(&exe, &old).await?;
-        }
-        tokio::fs::rename(&tmp, &exe).await?;
-        let _ = tokio::fs::remove_file(&old).await;
+        self.install_ytdlp_build(&expected).await?;
+        let _ = tokio::fs::remove_file(self.dir.join(YTDLP_EXE)).await;
         Ok(true)
     }
 
@@ -349,8 +485,12 @@ impl Tools {
         }
         let tools = self.clone();
         tauri::async_runtime::spawn(async move {
-            if let Err(e) = tools.ffmpeg().await {
-                eprintln!("ffmpeg download failed: {e}");
+            match tools.ffmpeg().await {
+                Ok(_) => tools.report(FFMPEG_TOOL, Phase::Ready, 0, 0),
+                Err(e) => {
+                    eprintln!("ffmpeg download failed: {e}");
+                    tools.report(FFMPEG_TOOL, Phase::Failed, 0, 0);
+                }
             }
         });
     }
@@ -378,8 +518,7 @@ impl Tools {
         let unpack = self.dir.join("ffmpeg-unpack");
         let _ = tokio::fs::remove_dir_all(&unpack).await;
         tokio::fs::create_dir_all(&unpack).await?;
-        let tar = std::env::var("SystemRoot").map(|r| PathBuf::from(r).join("System32").join("tar.exe")).unwrap_or_else(|_| PathBuf::from("tar.exe"));
-        let out = tokio::process::Command::new(tar)
+        let out = tokio::process::Command::new(tar_exe())
             .arg("-xf")
             .arg(&zip)
             .arg("-C")

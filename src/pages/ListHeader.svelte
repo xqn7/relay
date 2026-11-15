@@ -70,6 +70,16 @@
     flex: none;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     border-radius: 12px;
+    animation: cover-in 380ms var(--ease) both;
+  }
+  @keyframes cover-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96) translateY(4px);
+    }
+  }
+  :global(html[data-quality="low"]) .art {
+    animation: none;
   }
   .cover {
     cursor: grab;

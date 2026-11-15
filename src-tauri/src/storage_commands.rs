@@ -144,10 +144,10 @@ pub async fn backup_create(app: tauri::AppHandle, state: St<'_>) -> AppResult<bo
 }
 
 /// Restores a backup the user picks. Returns the number of accounts restored (0 if cancelled);
-/// the UI reloads afterwards, since the signed-in account's library may have changed.
+/// the UI reloads afterwards, since the signed-in account's library may have changed. Works
+/// signed out too: on a reinstalled PC there is no account yet, the backup brings them back.
 #[tauri::command]
 pub async fn backup_restore(app: tauri::AppHandle, state: St<'_>) -> AppResult<usize> {
-    current(&state)?;
     let (tx, rx) = tokio::sync::oneshot::channel();
     crate::util::file_dialog(&app).add_filter("Relay backup", &[backup::EXTENSION]).pick_file(move |p| {
         let _ = tx.send(p);
@@ -159,6 +159,19 @@ pub async fn backup_restore(app: tauri::AppHandle, state: St<'_>) -> AppResult<u
     storage::sync(state.inner());
     backup::schedule(state.inner());
     Ok(n)
+}
+
+/// Where automatic backups go unless the user picks another place: OneDrive when it's set
+/// up (it survives a reinstall and syncs online), else Documents.
+#[tauri::command]
+pub fn backup_suggested_folder(app: tauri::AppHandle) -> AppResult<String> {
+    use tauri::Manager;
+    let base = std::env::var_os("OneDrive").map(PathBuf::from).filter(|p| p.is_dir());
+    let base = match base {
+        Some(p) => p,
+        None => app.path().document_dir().map_err(|e| AppError::new("io", e.to_string()))?,
+    };
+    Ok(base.join(crate::app_name()).to_string_lossy().into_owned())
 }
 
 #[tauri::command]

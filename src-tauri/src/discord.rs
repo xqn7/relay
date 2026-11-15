@@ -140,9 +140,7 @@ impl Default for Discord {
     fn default() -> Self {
         let (tx, rx) = watch::channel(None);
         let status = std::sync::Arc::new(AtomicU8::new(STATUS_OFF));
-        if !APP_ID.is_empty() {
-            tauri::async_runtime::spawn(worker(rx, status.clone()));
-        }
+        tauri::async_runtime::spawn(worker(rx, status.clone()));
         Self { tx, status }
     }
 }

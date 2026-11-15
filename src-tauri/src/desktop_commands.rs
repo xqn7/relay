@@ -1,15 +1,13 @@
 //! Commands for desktop integration: overlays, tray texts, Game mode and hardware info,
-//! Discord preview, lock screen art, and updates.
+//! Discord preview and updates.
 
 use crate::commands::St;
 use crate::error::{AppError, AppResult};
 use crate::hardware::{self, Hardware, Recommendation};
-use crate::lockscreen::Applied;
 use crate::overlays;
 use crate::tray::Labels;
 use crate::updater::{self, UpdateInfo};
 use serde::Serialize;
-use tauri::ipc::{InvokeBody, Request};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,18 +21,16 @@ pub struct DesktopInfo {
     /// "unset" (no Discord application yet), "off", "waiting" (Discord not running), "connected".
     discord: &'static str,
     version: String,
+    /// This is Relay Dev, the build from the project folder.
+    dev: bool,
 }
 
 #[tauri::command]
 pub fn desktop_info(state: St) -> DesktopInfo {
-    let discord = if crate::discord::APP_ID.is_empty() {
-        "unset"
-    } else {
-        match state.desktop.discord.status() {
-            crate::discord::STATUS_CONNECTED => "connected",
-            crate::discord::STATUS_NOT_RUNNING => "waiting",
-            _ => "off",
-        }
+    let discord = match state.desktop.discord.status() {
+        crate::discord::STATUS_CONNECTED => "connected",
+        crate::discord::STATUS_NOT_RUNNING => "waiting",
+        _ => "off",
     };
     DesktopInfo {
         started_in_tray: state.desktop.started_in_tray,
@@ -45,6 +41,7 @@ pub fn desktop_info(state: St) -> DesktopInfo {
         lyrics_unlocked: overlays::lyrics_unlocked(&state),
         discord,
         version: state.app.package_info().version.to_string(),
+        dev: crate::is_dev(),
     }
 }
 
@@ -62,6 +59,19 @@ pub fn mini_toggle(app: tauri::AppHandle) {
 #[tauri::command]
 pub fn lyrics_unlock(app: tauri::AppHandle, unlocked: bool) {
     overlays::set_lyrics_unlocked(&app, unlocked);
+}
+
+/// Where the helper downloads stand (yt-dlp, ffmpeg); also starts any that aren't done.
+#[tauri::command]
+pub fn tools_prepare(state: St) -> Vec<crate::tools::ToolProgress> {
+    state.tools.prepare_all();
+    state.tools.status()
+}
+
+/// Whether the main window has desktop lyrics to show (opens or closes their window).
+#[tauri::command]
+pub fn lyrics_active(app: tauri::AppHandle, active: bool) {
+    overlays::set_lyrics_active(&app, active);
 }
 
 /// Tray menu, taskbar tooltips and Discord texts in the UI's language.
@@ -107,25 +117,6 @@ pub async fn hardware_info(state: St<'_>) -> AppResult<HardwareInfo> {
 #[tauri::command]
 pub fn discord_preview(state: St) -> Option<serde_json::Value> {
     crate::desktop::discord_activity(state.inner(), true)
-}
-
-#[tauri::command]
-pub async fn lockscreen_set(state: St<'_>, request: Request<'_>) -> AppResult<Applied> {
-    let InvokeBody::Raw(bytes) = request.body() else {
-        return Err(AppError::new("invalid_input", "expected raw bytes"));
-    };
-    if !state.db.pref::<bool>("lockScreen").unwrap_or(false) {
-        return Err(AppError::new("invalid_input", "lock screen art is off"));
-    }
-    let png = bytes.clone();
-    let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || state.desktop.lockscreen.set(&png)).await.map_err(|e| AppError::new("internal", e.to_string()))?
-}
-
-#[tauri::command]
-pub async fn lockscreen_restore(state: St<'_>) -> AppResult<()> {
-    let state = state.inner().clone();
-    tokio::task::spawn_blocking(move || state.desktop.lockscreen.restore()).await.map_err(|e| AppError::new("internal", e.to_string()))?
 }
 
 #[tauri::command]

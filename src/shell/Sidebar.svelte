@@ -5,6 +5,7 @@
   import Icon from "../lib/components/Icon.svelte";
   import { t } from "../lib/i18n/index.svelte";
   import { newFolder, newPlaylist, openFolderMenu, openPlaylistMenu } from "../lib/playlistMenu";
+  import { desktop } from "../lib/stores/desktop.svelte";
   import { dialogs } from "../lib/stores/dialogs.svelte";
   import { dnd, dropTarget, type Payload } from "../lib/stores/dnd.svelte";
   import { library } from "../lib/stores/library.svelte";
@@ -64,7 +65,7 @@
 </script>
 
 <nav class="sidebar">
-  <div class="logo" data-tauri-drag-region><img class="logo-mark" src={logo} alt="Relay" width="30" height="30" draggable="false" /></div>
+  <div class="logo" data-tauri-drag-region><img class="logo-mark" src={logo} alt="Relay" width="30" height="30" draggable="false" />{#if desktop.info?.dev}<span class="dev">Dev</span>{/if}</div>
   <div class="rail">
     <button class:active={isRoute("home")} aria-label={t("nav.home")} title={t("nav.home")} onclick={() => ui.open({ name: "home" })}>
       <Icon name="home" size={20} />
@@ -193,6 +194,24 @@
     margin-bottom: 14px;
   }
   .logo img {
+    pointer-events: none;
+  }
+  .logo {
+    position: relative;
+  }
+  .dev {
+    position: absolute;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0 5px;
+    border-radius: 4px;
+    background: var(--glass-raised);
+    color: var(--text-2);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    line-height: 15px;
     pointer-events: none;
   }
   .rail {

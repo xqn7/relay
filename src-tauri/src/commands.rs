@@ -41,6 +41,8 @@ pub fn auth_state(state: St) -> AppResult<Option<Account>> {
 
 #[tauri::command]
 pub async fn sign_up(state: St<'_>, email: String, password: String, keep: bool) -> AppResult<Created> {
+    let online = crate::network::ensure_online(state.inner()).await;
+    crate::email_check::check(&accounts::normalize_email(&email), online).await?;
     let db = state.db.clone();
     let created = blocking(move || accounts::create(&db, &email, &password, keep)).await?;
     set_current(&state, Some(created.account.clone()));
@@ -267,6 +269,33 @@ pub fn prefetch_track(state: St, track: Track, quality: Quality) -> AppResult<()
     });
     Ok(())
 }
+
+/// Looks a song up before it's likely played (pointer on it, first songs of an opened list), so
+/// clicking it starts at once. No download. At most WARM_AT_ONCE lookups run; a request beyond
+/// that is turned down (false) rather than queued, so the page can ask again later.
+#[tauri::command]
+pub fn warm_track(state: St, track: Track, quality: Quality) -> AppResult<bool> {
+    if !track.is_sane() {
+        return Err(AppError::new("invalid_input", "bad track"));
+    }
+    if track.source == crate::sources::LOCAL || !state.net.online() || state.streams.get(&track.id).is_some() {
+        return Ok(true);
+    }
+    let Ok(permit) = WARMING.clone().try_acquire_owned() else { return Ok(false) };
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        let _permit = permit;
+        if matches!(crate::storage::on_disk(&state, &track.id), Ok(Some(_))) {
+            return;
+        }
+        let _ = state.db.upsert_track(&track);
+        let _ = crate::resolver::warm(&state, &track, quality).await;
+    });
+    Ok(true)
+}
+
+const WARM_AT_ONCE: usize = 3;
+static WARMING: std::sync::LazyLock<Arc<tokio::sync::Semaphore>> = std::sync::LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(WARM_AT_ONCE)));
 
 #[tauri::command]
 pub fn queue_save(state: St, queue: Value) -> AppResult<()> {

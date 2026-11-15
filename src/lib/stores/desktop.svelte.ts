@@ -1,12 +1,11 @@
 // The main window's side of desktop integration: feeds the mini player and desktop lyrics,
-// acts on their buttons, keeps the tray and taskbar texts in the UI's language, puts the
-// cover on the lock screen, follows Game mode, offers downloaded updates, and suggests a
-// lower visual quality when animations stutter.
+// acts on their buttons, keeps the tray and taskbar texts in the UI's language, follows
+// Game mode, offers downloaded updates, and suggests a lower visual quality when animations
+// stutter.
 import { emit, listen } from "@tauri-apps/api/event";
 import { untrack } from "svelte";
-import { api, artistLine, proxiedCover, type DesktopInfo, type Track, type UpdateInfo, type VisualQuality } from "../api";
+import { api, artistLine, proxiedCover, type DesktopInfo, type UpdateInfo, type VisualQuality } from "../api";
 import { LYRICS_EVENT, NOW_EVENT, READY_EVENT, REMOTE_EVENT, positionNow, type LyricsFeed, type NowFeed, type RemoteAction } from "../desktop/feed";
-import { renderLockArt } from "../desktop/lockArt";
 import { i18n, t } from "../i18n/index.svelte";
 import { buildLines } from "../lyrics/lines";
 import { backgrounds } from "./backgrounds.svelte";
@@ -20,8 +19,8 @@ import { visual } from "./visual.svelte";
 
 /** A position report this far off from where the overlays think the song is means a seek. */
 const SEEK_DRIFT_MS = 1500;
-/** A pause shorter than this (a song change, buffering) keeps the cover on the lock screen. */
-const LOCK_RESTORE_DELAY_MS = 3000;
+/** Desktop lyrics with nothing to show for this long close their window. */
+const LYRICS_IDLE_MS = 60_000;
 /** How long frame times are sampled when the fullscreen player opens. */
 const FRAME_SAMPLE_MS = 5000;
 /** Share of slow frames that counts as stuttering. */
@@ -30,13 +29,11 @@ const SLOW_SHARE = 0.25;
 class DesktopStore {
   info = $state<DesktopInfo | null>(null);
   update = $state<UpdateInfo | null>(null);
+  private lyricsOpen = false;
+  private lyricsIdleTimer = 0;
   lyricsUnlocked = $state(false);
   private attached = false;
   private lastNow: NowFeed | null = null;
-  private lockTrackId: string | null = null;
-  private lockSeq = 0;
-  private lockTimer = 0;
-  private lockFailedShown = false;
   private qualityHintShown = false;
 
   /** Wires events and effects once, after sign-in. */
@@ -96,15 +93,16 @@ class DesktopStore {
       untrack(() => this.sendLyrics());
     });
 
+    // The desktop lyrics window only exists while it has something to show.
+    $effect(() => {
+      const wanted = settings.values.desktopLyrics && player.playing && lyrics.status === "ready" && !!lyrics.data?.synced;
+      untrack(() => this.setLyricsWanted(wanted));
+    });
+
     // Tray, taskbar and Discord texts follow the UI language.
     $effect(() => {
       void i18n.lang;
       untrack(() => api.uiLabels(labels()).catch((e) => console.error("tray labels failed", e)));
-    });
-
-    $effect(() => {
-      const show = settings.values.lockScreen && player.playing ? (player.current?.track ?? null) : null;
-      untrack(() => this.syncLockScreen(show));
     });
 
     $effect(() => {
@@ -150,41 +148,24 @@ class DesktopStore {
     else if (action === "like" && player.current) library.toggleLike(player.current.track);
   }
 
-  setLyricsUnlocked(on: boolean): void {
-    api.lyricsUnlock(on).catch((e) => console.error("desktop lyrics lock failed", e));
-  }
-
-  // ---- lock screen -------------------------------------------------------------------------
-
-  private syncLockScreen(track: Track | null): void {
-    clearTimeout(this.lockTimer);
-    if (!track) {
-      if (!this.lockTrackId) return;
-      this.lockTimer = window.setTimeout(() => {
-        this.lockTrackId = null;
-        this.lockSeq++;
-        api.lockscreenRestore().catch((e) => console.error("lock screen restore failed", e));
-      }, LOCK_RESTORE_DELAY_MS);
+  /** Opens the lyrics window at once when wanted; closes it after a quiet minute (a pause or a
+   * song without lyrics), so short breaks don't rebuild it. */
+  private setLyricsWanted(wanted: boolean): void {
+    clearTimeout(this.lyricsIdleTimer);
+    if (wanted) {
+      if (!this.lyricsOpen) api.lyricsActive(true).catch((e) => console.error("desktop lyrics failed", e));
+      this.lyricsOpen = true;
       return;
     }
-    if (track.id === this.lockTrackId) return;
-    this.lockTrackId = track.id;
-    const seq = ++this.lockSeq;
-    // The lock screen is big: the HD cover (looked up and cached since Phase 3) where there is one.
-    api
-      .coverHd(track)
-      .catch(() => null)
-      .then((hd) => renderLockArt(track.title, artistLine(track), hd ?? track.cover))
-      .then((png) => (seq === this.lockSeq ? api.lockscreenSet(png) : null))
-      .then((r) => {
-        if (r?.spotlight) ui.toast(t("lockscreen.spotlight"), "info");
-      })
-      .catch((e) => {
-        console.error("lock screen art failed", e);
-        this.lockTrackId = null;
-        if (!this.lockFailedShown) ui.toast(t("lockscreen.failed"), "alert");
-        this.lockFailedShown = true;
-      });
+    if (!this.lyricsOpen) return;
+    this.lyricsIdleTimer = window.setTimeout(() => {
+      this.lyricsOpen = false;
+      api.lyricsActive(false).catch((e) => console.error("desktop lyrics failed", e));
+    }, LYRICS_IDLE_MS);
+  }
+
+  setLyricsUnlocked(on: boolean): void {
+    api.lyricsUnlock(on).catch((e) => console.error("desktop lyrics lock failed", e));
   }
 
   // ---- updates -----------------------------------------------------------------------------

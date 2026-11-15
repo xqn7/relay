@@ -1,10 +1,13 @@
 <!-- A square library tile (playlist, folder, album, artist). The art itself reacts when
      something dragged can be dropped onto it. -->
 <script lang="ts">
+  import type { Track } from "../api";
+  import { warmCancel, warmNow, warmSoon } from "../player/warm";
   import type { IconName } from "../icons";
   import { dnd, dropTarget, type DropHandler } from "../stores/dnd.svelte";
   import Cover from "./Cover.svelte";
   import Icon from "./Icon.svelte";
+  import PlayingBars from "./PlayingBars.svelte";
 
   let {
     title,
@@ -14,6 +17,8 @@
     icon = "music",
     round = false,
     drop,
+    warm,
+    playing = false,
     onclick,
     onmenu,
     onpress,
@@ -27,6 +32,10 @@
     icon?: IconName;
     round?: boolean;
     drop?: { key: string } & DropHandler;
+    /** A song the tile plays: looked up ahead while the pointer rests on it. */
+    warm?: Track;
+    /** The tile's song is playing right now. */
+    playing?: boolean;
     onclick: () => void;
     onmenu?: (e: MouseEvent) => void;
     onpress?: (e: PointerEvent) => void;
@@ -43,7 +52,9 @@
   onclick={onclick}
   onkeydown={(e) => e.key === "Enter" && onclick()}
   oncontextmenu={(e) => onmenu?.(e)}
-  onpointerdown={(e) => onpress?.(e)}>
+  onpointerenter={() => warm && warmSoon(warm)}
+  onpointerleave={warmCancel}
+  onpointerdown={(e) => (warm && warmNow(warm), onpress?.(e))}>
   <div class="art" class:round class:over use:dropTarget={drop ?? { ...noDrop, key: `none:${title}` }}>
     {#if covers.filter(Boolean).length >= 2}
       <div class="grid">
@@ -54,6 +65,7 @@
     {:else}
       <div class="icon"><Icon name={icon} size={46} strokeWidth={1.6} /></div>
     {/if}
+    {#if playing}<PlayingBars radius={0} />{/if}
   </div>
   <div class="title truncate">{title}</div>
   {#if subtitle}<div class="sub truncate">{subtitle}</div>{/if}
@@ -82,6 +94,14 @@
   .art :global(.cover) {
     width: 100% !important;
     height: 100% !important;
+  }
+  .tile:hover .art:not(.over) {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.22);
+  }
+  :global(html[data-quality="low"]) .tile:hover .art:not(.over) {
+    transform: none;
+    box-shadow: none;
   }
   .art.round {
     border-radius: 50%;

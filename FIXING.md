@@ -22,7 +22,12 @@ right now. Trying SoundCloud."); the connection check marks YouTube.
 | "Sign in to confirm you're not a bot" | YouTube blocks the IP (VPNs, shared IPs) | Settings → YouTube → Sign in. The error is recognized in `tools.rs` `classify_ytdlp_error` (code `signin_required`). |
 | New yt-dlp error text not recognized | yt-dlp reworded a message | Add the text to `classify_ytdlp_error` in `tools.rs` (unit-tested there). |
 | Wrong format / no audio | Format selector no longer matches | `Tools::ytdlp_stream` in `tools.rs` (the `-f` argument). |
-| yt-dlp download fails | GitHub release layout or checksum file changed | `YTDLP_BASE`, `install_ytdlp`, `expected_hash` in `tools.rs`. |
+| yt-dlp download fails | GitHub release layout or checksum file changed | Relay uses the folder build `yt-dlp_win.zip` (starts faster than the single-file exe). `YTDLP_BASE`, `YTDLP_ZIP`, `install_ytdlp_build`, `expected_hash` in `tools.rs`. |
+
+Start speed: looking up a YouTube song takes yt-dlp about 2 s, so Relay looks songs up ahead of
+the click (`warm_track` in `commands.rs`, `resolver::warm`; the UI side is `src/lib/player/warm.ts`:
+a song the pointer rests on for 150 ms, the top search result, the next song in the queue). Links
+are cached in `stream_cache` and one lookup per song runs at a time (`resolver.rs`, `InFlight`).
 
 Signed-in playback passes the youtube.com cookies to yt-dlp through a temporary file
 (`youtube_account.rs` `netscape`, `sync_tools`).
@@ -108,7 +113,6 @@ image URLs to 1200 px, YouTube `maxresdefault`) are in `hd_variant`.
 - **ffmpeg download** (video import, MP3 export, waveforms): `tools.rs`, from Gyan's GitHub
   mirror with gyan.dev as fallback (`FFMPEG_RELEASE_API`, `FFMPEG_ZIP`).
 - **Discord Rich Presence**: local IPC pipe, `discord.rs`. Discord rarely changes this.
-- **Lock screen picture**: `lockscreen.rs` (WinRT `LockScreen` API).
 - **Updates**: `updater.rs` reads `latest.json` from the newest GitHub release and checks the
   minisign signature against `PUBLIC_KEY`. Releases are made with `scripts/release.ps1`.
 - **Online/offline detection**: `network.rs` (Windows network events plus a probe of

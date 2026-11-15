@@ -340,6 +340,14 @@ export interface Background {
 }
 
 /** Error shape returned by every failing command. */
+/** A helper program's download (yt-dlp, ffmpeg). */
+export interface ToolProgress {
+  tool: "yt-dlp" | "ffmpeg";
+  phase: "waiting" | "downloading" | "unpacking" | "ready" | "failed";
+  done: number;
+  total: number;
+}
+
 export interface AppError {
   code: string;
   detail: string;
@@ -386,6 +394,7 @@ export const api = {
 
   prepareTrack: (track: Track, quality: Quality, retry = false) => invoke<Prepared>("prepare_track", { track: plain(track), quality, retry }),
   prefetchTrack: (track: Track, quality: Quality) => invoke<void>("prefetch_track", { track: plain(track), quality }),
+  warmTrack: (track: Track, quality: Quality) => invoke<boolean>("warm_track", { track: plain(track), quality }),
 
   queueSave: (queue: unknown) => invoke<void>("queue_save", { queue }),
   queueLoad: () => invoke<unknown>("queue_load"),
@@ -401,11 +410,11 @@ export const api = {
   mainWindowShow: () => invoke<void>("main_window_show"),
   miniToggle: () => invoke<void>("mini_toggle"),
   lyricsUnlock: (unlocked: boolean) => invoke<void>("lyrics_unlock", { unlocked }),
+  lyricsActive: (active: boolean) => invoke<void>("lyrics_active", { active }),
+  toolsPrepare: () => invoke<ToolProgress[]>("tools_prepare"),
   uiLabels: (labels: UiLabels) => invoke<void>("ui_labels", { labels }),
   hardwareInfo: () => invoke<HardwareInfo>("hardware_info"),
   discordPreview: () => invoke<DiscordActivity | null>("discord_preview"),
-  lockscreenSet: (png: Uint8Array) => invoke<{ spotlight: boolean }>("lockscreen_set", png),
-  lockscreenRestore: () => invoke<void>("lockscreen_restore"),
   updateCheck: () => invoke<UpdateInfo | null>("update_check"),
   updateInstall: () => invoke<void>("update_install"),
   ytdlpVersion: () => invoke<string | null>("ytdlp_version"),
@@ -492,6 +501,7 @@ export const api = {
   connectionCheck: () => invoke<ConnectionCheck[]>("connection_check"),
   backupCreate: () => invoke<boolean>("backup_create"),
   backupRestore: () => invoke<number>("backup_restore"),
+  backupSuggestedFolder: () => invoke<string>("backup_suggested_folder"),
   backupFolderPick: () => invoke<string | null>("backup_folder_pick"),
   coverHd: (track: Track) => invoke<string | null>("cover_hd", { track: plain(track) }),
   coverSave: (url: string, name: string) => invoke<boolean>("cover_save", { url, name }),
@@ -573,8 +583,10 @@ export interface DesktopInfo {
   miniCustom: boolean;
   lyricsCustom: boolean;
   lyricsUnlocked: boolean;
-  discord: "unset" | "off" | "waiting" | "connected";
+  discord: "off" | "waiting" | "connected";
   version: string;
+  /** Relay Dev, the build from the project folder: separate data, no self-updating. */
+  dev: boolean;
 }
 
 export interface UiLabels {

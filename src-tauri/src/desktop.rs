@@ -3,21 +3,18 @@
 //! play state; this fans it out. Also start with Windows.
 
 use crate::discord::{self, Discord};
-use crate::lockscreen::LockScreenArt;
 use crate::media::NowPlaying;
 use crate::overlays::{self, Overlays};
 use crate::power::KeepAwake;
 use crate::tray::{self, Tray};
 use crate::AppState;
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
-const RUN_VALUE: &str = "Relay";
 /// Passed by the Windows startup entry: start hidden in the tray.
 pub const TRAY_ARG: &str = "--tray";
 
@@ -32,7 +29,6 @@ pub struct Desktop {
     pub overlays: Overlays,
     pub tray: Tray,
     pub discord: Discord,
-    pub lockscreen: LockScreenArt,
     /// Started by Windows at sign-in, hidden in the tray.
     pub started_in_tray: bool,
     /// Artist photos for Discord's corner badge, by YouTube Music artist id.
@@ -40,7 +36,7 @@ pub struct Desktop {
 }
 
 impl Desktop {
-    pub fn new(data_dir: &Path, started_in_tray: bool) -> Self {
+    pub fn new(started_in_tray: bool) -> Self {
         Self {
             now: Mutex::new(None),
             playing: AtomicBool::new(false),
@@ -50,7 +46,6 @@ impl Desktop {
             overlays: Overlays::default(),
             tray: Tray::default(),
             discord: Discord::default(),
-            lockscreen: LockScreenArt::new(data_dir),
             started_in_tray,
             artist_photos: Mutex::new(HashMap::new()),
         }
@@ -85,7 +80,7 @@ pub fn on_state(state: &Arc<AppState>, playing: bool, position_ms: u64, duration
 
 fn discord_options(state: &AppState) -> Option<discord::Options> {
     let b = |key: &str, default: bool| state.db.pref::<bool>(key).unwrap_or(default);
-    if discord::APP_ID.is_empty() || !b("discord", true) {
+    if !b("discord", true) {
         return None;
     }
     Some(discord::Options {
@@ -170,11 +165,11 @@ pub fn sync_autostart(state: &AppState) {
     let on = state.db.pref::<bool>("startWithWindows").unwrap_or(false);
     let result = if on {
         match std::env::current_exe() {
-            Ok(exe) => crate::winreg::set_user_string(RUN_KEY, RUN_VALUE, &format!("\"{}\" {TRAY_ARG}", exe.display())),
+            Ok(exe) => crate::winreg::set_user_string(RUN_KEY, crate::app_name(), &format!("\"{}\" {TRAY_ARG}", exe.display())),
             Err(e) => Err(windows::core::Error::new(windows::core::HRESULT(-1), e.to_string())),
         }
     } else {
-        crate::winreg::delete_user_value(RUN_KEY, RUN_VALUE)
+        crate::winreg::delete_user_value(RUN_KEY, crate::app_name())
     };
     if let Err(e) = result {
         eprintln!("start with Windows entry failed: {e}");
@@ -197,11 +192,6 @@ pub fn on_setting(state: &Arc<AppState>, key: &str) {
         "miniOnTop" => overlays::apply_mini_settings(app),
         "desktopLyrics" => overlays::sync_lyrics(app),
         "lyricsPosition" => overlays::reset_position(app, overlays::LYRICS),
-        "lockScreen" => {
-            if !state.db.pref::<bool>("lockScreen").unwrap_or(false) {
-                let _ = state.desktop.lockscreen.restore();
-            }
-        }
         "gameMode" => crate::os_events::recheck_game(),
         "startWithWindows" => sync_autostart(state),
         "youtubeUseAccount" => crate::youtube_account::sync_tools(state),
@@ -219,10 +209,7 @@ pub fn mini_shortcut(state: &AppState) -> Option<crate::os_events::Shortcut> {
     crate::os_events::parse_shortcut(&text)
 }
 
-/// Last things before the process ends: the user's own lock screen picture comes back.
+/// Last things before the process ends: the Windows media overlay lets go of the song.
 pub fn before_exit(state: &AppState) {
     state.media.clear();
-    if let Err(e) = state.desktop.lockscreen.restore() {
-        eprintln!("lock screen restore failed: {e}");
-    }
 }

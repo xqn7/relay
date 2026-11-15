@@ -16,7 +16,6 @@
 
   let info = $state<DesktopInfo | null>(null);
   let preview = $state<DiscordActivity | null>(null);
-  const unset = $derived(info?.discord === "unset");
 
   onMount(() => {
     api.desktopInfo().then((i) => (info = i)).catch(() => {});
@@ -31,7 +30,7 @@
   });
 
   const status = $derived(
-    !info ? "" : unset ? t("discord.unset") : !v.discord ? t("discord.statusOff") : info.discord === "connected" ? t("discord.connected") : t("discord.waiting"),
+    !info ? "" : !v.discord ? t("discord.statusOff") : info.discord === "connected" ? t("discord.connected") : t("discord.waiting"),
   );
   const length = $derived(preview?.timestamps ? preview.timestamps.end - preview.timestamps.start : 0);
 

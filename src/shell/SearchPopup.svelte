@@ -1,6 +1,9 @@
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
-  import { api, isAppError, SOURCES, type Collection, type SearchKind, type SearchResults, type SearchSource } from "../lib/api";
+  import { api, isAppError, SOURCES, type Collection, type RemoteList, type SearchKind, type SearchResults, type SearchSource } from "../lib/api";
+  import Button from "../lib/components/Button.svelte";
+  import { dialogs } from "../lib/stores/dialogs.svelte";
+  import { errorText } from "./dialogs/importText";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
   import SourceBadge from "../lib/components/SourceBadge.svelte";
@@ -10,13 +13,18 @@
   import { t } from "../lib/i18n/index.svelte";
   import { artistMenu, collectionMenu } from "../lib/pins";
   import { offline } from "../lib/stores/offline.svelte";
+  import { warmNow } from "../lib/player/warm";
   import { player, sourceLabel } from "../lib/stores/player.svelte";
   import { ui } from "../lib/stores/ui.svelte";
 
   const DEBOUNCE_MS = 260;
   type Status = { state: "loading" } | { state: "done"; data: SearchResults } | { state: "error"; offline: boolean };
 
+  type LinkStatus = { state: "loading" } | { state: "done"; list: RemoteList; url: string } | { state: "error"; text: string };
+
   let query = $state("");
+  /** A pasted link is opened, not searched for. */
+  let link = $state<LinkStatus | null>(null);
   let kind = $state<SearchKind>("all");
   let results = $state<Partial<Record<SearchSource, Status>>>({});
   let history = $state<string[]>([]);
@@ -47,17 +55,55 @@
     const id = ++seq;
     if (!q) {
       results = {};
+      link = null;
       return;
     }
+    if (isLink(q)) {
+      results = {};
+      timer = window.setTimeout(() => openLink(q, id), DEBOUNCE_MS);
+      return;
+    }
+    link = null;
     timer = window.setTimeout(() => run(q, k, id), DEBOUNCE_MS);
   });
+
+  // Links from the services Relay can read (the same ones the Import box takes).
+  const LINK = /^(https?:\/\/|spotify:)|^(www\.)?(open\.spotify\.com|spotify\.link|music\.apple\.com|(www\.)?deezer\.com|deezer\.page\.link|(music\.)?youtube\.com|youtu\.be|(m\.)?soundcloud\.com|on\.soundcloud\.com)\//i;
+  const isLink = (q: string) => LINK.test(q) && !/\s/.test(q);
+
+  async function openLink(url: string, id: number) {
+    link = { state: "loading" };
+    try {
+      const list = await api.importPreview(url);
+      if (id !== seq) return;
+      link = { state: "done", list, url };
+      if (list.tracks[0]) warmNow(list.tracks[0]);
+    } catch (e) {
+      if (id === seq) link = { state: "error", text: errorText(e) };
+    }
+  }
+
+  function playLink(list: RemoteList) {
+    if (list.tracks.length) player.playTracks(list.tracks, 0);
+    close();
+  }
+
+  function importLink(url: string) {
+    close();
+    dialogs.open({ kind: "import", url });
+  }
 
   function run(q: string, k: SearchKind, id: number) {
     const sources = sourcesFor(k);
     results = Object.fromEntries(sources.map((s) => [s, { state: "loading" }]));
     for (const source of sources) {
       api.search(source, q, k).then(
-        (data) => id === seq && (results[source] = { state: "done", data }),
+        (data) => {
+          if (id !== seq) return;
+          results[source] = { state: "done", data };
+          // The top song is the most likely pick; look it up before the click.
+          if (source === "youtube" && data.tracks[0]) warmNow(data.tracks[0]);
+        },
         (e) => id === seq && (results[source] = { state: "error", offline: isAppError(e) && (e.code === "offline" || e.code === "network") }),
       );
     }
@@ -141,6 +187,32 @@
       {:else}
         <p class="hint">{t("search.placeholder")}</p>
       {/if}
+    {:else if link}
+      <div class="scroll">
+        {#if link.state === "loading"}
+          <div class="status"><Spinner size={16} />{t("import.loadingPreview")}</div>
+        {:else if link.state === "error"}
+          <div class="status"><Icon name="alert" size={16} />{link.text}</div>
+        {:else if link.list.kind === "track"}
+          <h4>{t("search.fromLink")}</h4>
+          <TrackList tracks={link.list.tracks} compact warmFirst={false} />
+        {:else}
+          {@const list = link.list}
+          {@const url = link.url}
+          <h4>{t("search.fromLink")}</h4>
+          <div class="link-card">
+            <Cover src={list.cover} size={64} fallback={list.kind === "album" ? "disc" : "list"} />
+            <span class="col">
+              <span class="name truncate">{list.title}</span>
+              <span class="sub truncate">{list.kind === "album" ? t("import.kindAlbum") : t("import.kindPlaylist")}{list.owner ? ` · ${list.owner}` : ""} · {t("import.songCount", { n: list.tracks.length })}</span>
+            </span>
+            <span class="link-actions">
+              <Button variant="primary" small icon="play" disabled={!list.tracks.length} onclick={() => playLink(list)}>{t("menu.play")}</Button>
+              <Button variant="secondary" small icon="download" onclick={() => importLink(url)}>{t("import.start")}</Button>
+            </span>
+          </div>
+        {/if}
+      </div>
     {:else}
       <div class="tabs" role="tablist">
         {#each tabs as tab (tab.kind)}
@@ -161,7 +233,7 @@
         {/if}
         {#if tracks.length}
           {#if kind === "all"}<h4>{t("search.songs")}</h4>{/if}
-          <TrackList {tracks} compact />
+          <TrackList {tracks} compact warmFirst={false} />
         {/if}
         {#each [{ list: albums, label: t("search.albums"), icon: "disc" as IconName }, { list: playlists, label: t("search.playlists"), icon: "list" as IconName }] as group (group.label)}
           {#if group.list.length}
@@ -331,6 +403,20 @@
   }
   .history {
     color: var(--text-2);
+  }
+  .link-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px;
+  }
+  .link-card .col {
+    flex: 1;
+    min-width: 0;
+  }
+  .link-actions {
+    display: flex;
+    gap: 6px;
   }
   .history:hover,
   .entity:hover {

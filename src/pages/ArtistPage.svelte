@@ -117,7 +117,7 @@
     {#if group.list.length}
       <section>
         <h2>{group.label}</h2>
-        <div class="grid">
+        <div class="grid stagger">
           {#each group.list as c (c.kind + c.id)}
             <Tile title={c.title} subtitle={releaseSub(c)} cover={c.cover} icon="disc" onclick={() => openRelease(c)} onmenu={(e) => collectionMenu(e, c)} />
           {/each}
@@ -139,7 +139,7 @@
   {#if page.similar.length}
     <section>
       <h2>{t("artist.similar")}</h2>
-      <div class="grid">
+      <div class="grid stagger">
         {#each page.similar.slice(0, 12) as a (a.id)}
           <Tile
             title={a.name}

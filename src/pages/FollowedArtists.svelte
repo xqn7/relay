@@ -57,7 +57,7 @@
       {:else if r.releases.length === 0}
         <p class="note">{t("follows.noReleases")}</p>
       {:else}
-        <div class="grid">
+        <div class="grid stagger">
           {#each r.releases as c (c.kind + c.id)}
             <Tile title={c.title} subtitle={c.year ? String(c.year) : ""} cover={c.cover} icon="disc" onclick={() => open(c)} onmenu={(e) => collectionMenu(e, c)} />
           {/each}

@@ -10,6 +10,7 @@
   import { openTrackMenu } from "../trackMenu";
   import { insertIndex, visibleRange } from "../virtual";
   import TrackRow from "./TrackRow.svelte";
+  import { LIST_HEAD, warmNow } from "../player/warm";
 
   /** Longer lists render only the rows near the screen. */
   const VIRTUAL_FROM = 150;
@@ -22,6 +23,7 @@
     reorderable = false,
     showAlbum = false,
     compact = false,
+    warmFirst = true,
     onchanged,
   }: {
     tracks: Track[];
@@ -31,6 +33,8 @@
     reorderable?: boolean;
     showAlbum?: boolean;
     compact?: boolean;
+    /** Look up the first songs when the list shows (off where many lists share a page). */
+    warmFirst?: boolean;
     /** Called after songs were removed or moved, so the page reloads its list. */
     onchanged?: () => void;
   } = $props();
@@ -38,6 +42,21 @@
   // Keys stay unique even when a list holds the same song twice.
   const keys = $derived(itemIds ?? tracks.map((x, i) => `${x.id}#${i}`));
   let selected = $state<Set<number>>(new Set());
+  // The first songs are the likeliest clicks: their links are looked up as soon as the list
+  // has songs, once per list.
+  let headWarmed = false;
+  $effect(() => {
+    if (headWarmed || !warmFirst || !tracks.length) return;
+    headWarmed = true;
+    for (const t of tracks.slice(0, LIST_HEAD)) warmNow(t);
+  });
+
+  // Rows rise in when the list first shows; later changes (reorder, new songs) just appear.
+  let entering = $state(true);
+  $effect(() => {
+    const id = setTimeout(() => (entering = false), 700);
+    return () => clearTimeout(id);
+  });
   let anchor = 0;
   let listEl = $state<HTMLElement>();
   const rowHeight = $derived(compact ? 50 : 58);
@@ -192,6 +211,7 @@
   {@const track = tracks[i]}
   <TrackRow
     {track}
+    next={tracks[i + 1]}
     {compact}
     {showAlbum}
     selected={selected.has(i)}
@@ -212,11 +232,11 @@
        instead of being rebuilt), and skip the reorder spring, which measures every row. -->
   {#if virtual}
     {#each indices as i}
-      <div class="slot">{@render row(i)}</div>
+      <div class="slot" class:enter={entering} style:--i={i - range.start}>{@render row(i)}</div>
     {/each}
   {:else}
     {#each indices as i (keys[i])}
-      <div class="slot" animate:flip={{ duration: 300, easing: spring }}>{@render row(i)}</div>
+      <div class="slot" class:enter={entering} style:--i={i} animate:flip={{ duration: 300, easing: spring }}>{@render row(i)}</div>
     {/each}
   {/if}
   {#if insertAt >= 0}<div class="line" style:top="{lineTop - 1}px"></div>{/if}

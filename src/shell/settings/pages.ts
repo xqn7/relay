@@ -54,7 +54,6 @@ export const pages: PageDef[] = [
       ["settings.waveform", "settings.waveformDesc"],
       ["settings.visualizer", "settings.visualizerDesc"],
       ["desktopLyrics.title", "desktopLyrics.desc"],
-      ["lockscreen.title", "lockscreen.desc"],
     ],
   },
   {

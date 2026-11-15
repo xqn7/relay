@@ -41,7 +41,7 @@
       <IconButton icon="more" label={t("menu.more")} variant="solid" onclick={(e) => openFolderMenu(e, id)} />
     </div>
   </div>
-  <div class="grid" class:over={dnd.target === here.key} use:dropTarget={here}>
+  <div class="grid stagger" class:over={dnd.target === here.key} use:dropTarget={here}>
     {#each subfolders as f (f.id)}
       <Tile
         title={f.name}

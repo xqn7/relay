@@ -9,6 +9,8 @@ use crate::util::now_secs;
 use crate::AppState;
 use rusqlite::{params, OptionalExtension};
 use serde::Serialize;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
 
@@ -78,6 +80,21 @@ pub async fn resolve(state: &AppState, track: &Track, quality: Quality, fresh: b
     }
 }
 
+/// Looks the song up ahead of a likely click (the pointer rests on it) so the click finds its
+/// stream link cached. Only the song's own source, quietly: a failure here says nothing,
+/// and the real play goes through `resolve` with its fallbacks and messages.
+pub async fn warm(state: &AppState, track: &Track, quality: Quality) -> AppResult<()> {
+    let matched;
+    let track = if is_import_only(&track.source) {
+        matched = matching::matched(state, track, true).await?.ok_or_else(|| AppError::new("not_found", "no match"))?;
+        &matched
+    } else {
+        track
+    };
+    tokio::time::timeout(RESOLVE_TIMEOUT, native_stream(state, track, quality, false)).await.map_err(|_| AppError::new("timeout", "lookup took too long"))??;
+    Ok(())
+}
+
 async fn resolve_with(steps: &impl Steps, requested: &Track) -> AppResult<Resolution> {
     let matched;
     let track = if is_import_only(&requested.source) {
@@ -117,8 +134,37 @@ fn source_name(s: &str) -> &'static str {
     if s == SOUNDCLOUD { SOUNDCLOUD } else { YOUTUBE }
 }
 
+/// One lookup per song at a time: a click that lands while the song is being looked up
+/// ahead of time (hover, next in queue) waits for that lookup instead of starting another.
+static IN_FLIGHT: LazyLock<Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>> = LazyLock::new(Default::default);
+
+struct InFlight {
+    id: String,
+    lock: Arc<tokio::sync::Mutex<()>>,
+}
+
+impl InFlight {
+    fn new(id: &str) -> Self {
+        let mut map = IN_FLIGHT.lock().unwrap_or_else(|p| p.into_inner());
+        let lock = map.entry(id.to_string()).or_default().clone();
+        Self { id: id.to_string(), lock }
+    }
+}
+
+impl Drop for InFlight {
+    fn drop(&mut self) {
+        let mut map = IN_FLIGHT.lock().unwrap_or_else(|p| p.into_inner());
+        // Only the map and this guard hold it: nobody else is waiting, so the entry goes.
+        if Arc::strong_count(&self.lock) <= 2 {
+            map.remove(&self.id);
+        }
+    }
+}
+
 /// The song's own source, using a still-valid cached URL when possible.
 async fn native_stream(state: &AppState, track: &Track, quality: Quality, fresh: bool) -> AppResult<ResolvedStream> {
+    let flight = InFlight::new(&track.id);
+    let _turn = flight.lock.lock().await;
     if !fresh {
         if let Some(s) = cached_stream(state, &track.id)? {
             return Ok(s);

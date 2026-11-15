@@ -39,8 +39,9 @@
   function showError(e: unknown) {
     const code = isAppError(e) ? e.code : "";
     const key = `error.${code}`;
-    const text = hasKey(key) ? t(key as Key) : t("error.generic");
-    if (code === "invalid_email" || code === "email_taken" || code === "no_account") errors = { email: text };
+    const text = hasKey(key) ? t(key as Key, { domain: isAppError(e) ? e.detail : "" }) : t("error.generic");
+    suggestion = code === "email_typo" && isAppError(e) ? e.detail : "";
+    if (["invalid_email", "email_taken", "no_account", "email_typo", "email_disposable", "email_domain", "email_check_offline"].includes(code)) errors = { email: text };
     else if (code === "wrong_recovery_key") errors = { recovery: text };
     else if (code === "wrong_password" || code === "password_too_short") errors = { password: text };
     else errors = { form: text };
@@ -80,6 +81,30 @@
     copied = true;
   }
 
+  let restored = $state(false);
+  /** The provider a misspelled email domain most likely meant ("gmial.com" → "gmail.com"). */
+  let suggestion = $state("");
+
+  function useSuggestion() {
+    email = `${email.trim().split("@")[0]}@${suggestion}`;
+    suggestion = "";
+    errors = {};
+  }
+
+  /** A reinstalled PC has no accounts yet; a backup brings them back with their libraries. */
+  async function restoreBackup() {
+    errors = {};
+    try {
+      const n = await api.backupRestore();
+      if (!n) return;
+      const account = await api.authState();
+      if (account) onSignedIn(account);
+      else restored = true;
+    } catch (e) {
+      errors = { form: isAppError(e) && e.code === "bad_file" ? t("backup.badFile") : t("error.generic") };
+    }
+  }
+
   function pickLang(l: Lang) {
     i18n.lang = l;
     langOpen = false;
@@ -109,8 +134,8 @@
         </button>
         {#if langOpen}
           <div class="lang-menu glass" role="listbox" transition:fade={{ duration: 100 }}>
-            {#each languages as l (l)}
-              <button role="option" aria-selected={l === i18n.lang} onclick={() => pickLang(l)}>
+            {#each languages as l, i (l)}
+              <button role="option" class:split={i === 2} aria-selected={l === i18n.lang} onclick={() => pickLang(l)}>
                 {langName(l)}{#if l === i18n.lang}<Icon name="check" size={14} />{/if}
               </button>
             {/each}
@@ -153,6 +178,9 @@
         {/if}
         <form onsubmit={submit} novalidate>
           <Field label={t("auth.email")} type="email" bind:value={email} placeholder={t("auth.emailPlaceholder")} error={errors.email} autocomplete="email" autofocus />
+          {#if suggestion && mode === "create"}
+            <button type="button" class="link suggest" onclick={useSuggestion}>{t("auth.useSuggestion", { email: `${email.trim().split("@")[0]}@${suggestion}` })}</button>
+          {/if}
           {#if mode === "reset"}
             <Field label={t("auth.recoveryKey")} bind:value={recoveryInput} placeholder="XXXX-XXXX-XXXX-XXXX-XXXX" error={errors.recovery} autocomplete="off" />
           {/if}
@@ -180,6 +208,13 @@
             <button type="button" class="link center" onclick={() => switchMode("signIn")}>{t("auth.backToSignIn")}</button>
           {/if}
         </form>
+        {#if mode === "signIn"}
+          {#if restored}
+            <p class="restored"><Icon name="check" size={14} />{t("auth.restored")}</p>
+          {:else}
+            <button type="button" class="link center" onclick={restoreBackup}>{t("auth.restoreBackup")}</button>
+          {/if}
+        {/if}
         <p class="note">{t("auth.localNote")}</p>
       {/if}
     </section>
@@ -270,10 +305,11 @@
   .lang-btn:hover {
     background: rgba(var(--ink), 0.12);
   }
+  /* Opens upward: the picker sits low in the card, and seven languages don't fit below it. */
   .lang-menu {
     position: absolute;
     left: 0;
-    top: 38px;
+    bottom: 38px;
     z-index: 5;
     min-width: 150px;
     padding: 4px;
@@ -291,6 +327,11 @@
     border-radius: var(--r-sm);
     background: transparent;
     font-size: var(--fs-sm);
+  }
+  /* English and German first, the rest below a thin line. */
+  .lang-menu button.split {
+    margin-top: 5px;
+    box-shadow: 0 -3px 0 -2px var(--hairline);
   }
   .lang-menu button:hover {
     background: var(--hover);
@@ -358,6 +399,20 @@
     gap: 6px;
     margin: 0;
     font-size: var(--fs-xs);
+  }
+  .suggest {
+    align-self: flex-start;
+    margin-top: -8px;
+  }
+  .restored {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+    text-align: center;
   }
   .note {
     margin: 0;

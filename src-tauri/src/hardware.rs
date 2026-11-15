@@ -61,7 +61,7 @@ pub fn is_integrated(vendor: u32, name: &str, dedicated_mb: u64) -> bool {
 }
 
 pub fn detect() -> Hardware {
-    let cpu = crate::winreg::get_string(crate::winreg::Root::Machine, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString")
+    let cpu = crate::winreg::get_machine_string(r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString")
         .unwrap_or_default();
     let cores = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1);
     let (gpu, gpu_integrated) = gpu().unwrap_or_default();
