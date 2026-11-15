@@ -13,6 +13,8 @@ use tauri::{Emitter, Manager};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const CHECK_TIMEOUT: Duration = Duration::from_secs(12);
+/// The whole connection check: the internet probe (two tries) plus the services in parallel.
+const CHECK_ALL_TIMEOUT: Duration = Duration::from_secs(30);
 /// A video that has stayed up since 2005, used to see whether YouTube hands out streams.
 const CHECK_VIDEO: &str = "jNQXAC9IVRw";
 /// Repeated failures within this window share one probe.
@@ -133,7 +135,10 @@ pub fn watch(app: &tauri::AppHandle) {
 fn result(id: &'static str, r: Result<(), crate::error::AppError>) -> Check {
     match r {
         Ok(()) => Check { id, ok: true, code: "", detail: String::new() },
-        Err(e) => Check { id, ok: false, code: e.code, detail: e.detail },
+        Err(e) => {
+            eprintln!("connection check: {id} failed [{}] {}", e.code, e.detail);
+            Check { id, ok: false, code: e.code, detail: e.detail }
+        }
     }
 }
 
@@ -155,6 +160,27 @@ async fn timed<F: std::future::Future<Output = Result<(), crate::error::AppError
 /// Tests everything the app talks to. Services are only tested when the internet works,
 /// otherwise each would just repeat "no internet".
 pub async fn check_all(state: &Arc<AppState>) -> Vec<Check> {
+    // Each step has its own limit; this one also covers waiting for a probe that's already
+    // running, so the window always gets an answer.
+    match tokio::time::timeout(CHECK_ALL_TIMEOUT, run_checks(state)).await {
+        Ok(checks) => {
+            for c in checks.iter().filter(|c| !c.ok && c.code != "skipped") {
+                crate::report::error(state, c.code, &format!("connection check: {} failed: {}", c.id, c.detail));
+            }
+            checks
+        }
+        Err(_) => {
+            eprintln!("connection check: no answer within {} s", CHECK_ALL_TIMEOUT.as_secs());
+            crate::report::error(state, "check_hung", "connection check got no answer in 30 s");
+            ["internet", "youtube", "soundcloud", "spotify", "covers", "lyrics"]
+                .into_iter()
+                .map(|id| Check { id, ok: false, code: "timeout", detail: "no answer in time".into() })
+                .collect()
+        }
+    }
+}
+
+async fn run_checks(state: &Arc<AppState>) -> Vec<Check> {
     let internet = probe(state, true).await;
     if !internet {
         let mut out = vec![Check { id: "internet", ok: false, code: "offline", detail: "connectivity test failed".into() }];

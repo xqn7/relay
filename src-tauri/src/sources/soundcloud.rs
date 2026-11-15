@@ -121,6 +121,7 @@ pub fn map_track(t: &Value) -> Option<Track> {
         is_video: false,
         link: str_of(t, "permalink_url").map(str::to_string),
         via: None,
+        listens: t.get("playback_count").and_then(Value::as_u64),
     };
     track.is_sane().then_some(track)
 }
@@ -348,8 +349,9 @@ impl SoundCloud {
         let latest = latest.unwrap_or_default();
         let mut top_tracks: Vec<Track> = top.map(|v| collection(&v).iter().filter_map(map_track).collect()).unwrap_or_default();
         if top_tracks.is_empty() {
-            top_tracks = collection(&latest).iter().filter_map(map_track).take(10).collect();
+            top_tracks = collection(&latest).iter().filter_map(map_track).collect();
         }
+        let top_tracks: Vec<Track> = super::most_played(top_tracks).into_iter().take(10).collect();
         // SoundCloud artists mostly release single tracks; the newest ones are their "singles".
         let singles = collection(&latest)
             .iter()

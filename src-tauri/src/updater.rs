@@ -15,6 +15,9 @@ use std::time::Duration;
 use tauri::Emitter;
 
 const LATEST_URL: &str = "https://github.com/xqn7/relay/releases/latest/download/latest.json";
+const RELEASES_API: &str = "https://api.github.com/repos/xqn7/relay/releases";
+/// Release notes are a few lines; anything far longer isn't shown whole anyway.
+const MAX_NOTES: usize = 8000;
 /// The release signing key's public half (the private half never leaves the release PC).
 const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZBMkMyRTdCNjQ1NjIwNTEKUldSUklGWmtleTRzK2kvNFQ5R2dOV0lhcXhUS1V0ZGVJOUFtVDUrWW5qOE01bmYxNmY5MVNsUUgK";
 const PLATFORM: &str = "windows-x86_64";
@@ -136,6 +139,16 @@ pub fn check_later(state: &Arc<AppState>) {
             }
         }
     });
+}
+
+/// The notes of the release this version came from ("" when it has none).
+pub async fn notes(state: &AppState, version: &str) -> AppResult<String> {
+    if parse_version(version).is_none() {
+        return Err(AppError::new("invalid_input", "bad version"));
+    }
+    let url = format!("{RELEASES_API}/tags/v{version}");
+    let release = state.http.get_json(&url).await?;
+    Ok(release["body"].as_str().unwrap_or("").chars().take(MAX_NOTES).collect())
 }
 
 /// Looks for a newer release and downloads it. None = already up to date.

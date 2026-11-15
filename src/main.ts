@@ -1,10 +1,15 @@
 import { mount } from "svelte";
 import "./lib/tokens.css";
 import App from "./App.svelte";
+import { api } from "./lib/api";
 import { APP_NAME } from "./lib/brand";
 import { i18nReady } from "./lib/i18n/index.svelte";
 
 document.title = APP_NAME;
+
+// Script errors the page didn't catch go to the developer like the backend's own.
+window.addEventListener("error", (e) => void api.reportError(`${e.message} at ${e.filename}:${e.lineno}`).catch(() => {}));
+window.addEventListener("unhandledrejection", (e) => void api.reportError(`unhandled: ${e.reason instanceof Error ? (e.reason.stack ?? e.reason.message) : String(e.reason)}`).catch(() => {}));
 
 /** Loading shorter than this shows no logo at all, so a fast start never flickers. */
 const SPLASH_AFTER_MS = 200;

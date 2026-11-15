@@ -116,6 +116,13 @@ pub fn discord_preview(state: St) -> Option<serde_json::Value> {
     crate::desktop::discord_activity(state.inner(), true)
 }
 
+/// "What's new": the notes of the release now running, shown once after an update.
+#[tauri::command]
+pub async fn release_notes(state: St<'_>) -> AppResult<String> {
+    let version = state.app.package_info().version.to_string();
+    updater::notes(&state, &version).await
+}
+
 #[tauri::command]
 pub async fn update_check(state: St<'_>) -> AppResult<Option<UpdateInfo>> {
     updater::check(state.inner()).await
@@ -125,18 +132,6 @@ pub async fn update_check(state: St<'_>) -> AppResult<Option<UpdateInfo>> {
 pub async fn update_install(state: St<'_>) -> AppResult<()> {
     let state = state.inner().clone();
     tokio::task::spawn_blocking(move || updater::install(&state)).await.map_err(|e| AppError::new("internal", e.to_string()))?
-}
-
-#[tauri::command]
-pub async fn ytdlp_version(state: St<'_>) -> AppResult<Option<String>> {
-    Ok(state.tools.ytdlp_version().await)
-}
-
-/// Returns the version now installed, and whether it changed.
-#[tauri::command]
-pub async fn ytdlp_update(state: St<'_>) -> AppResult<(Option<String>, bool)> {
-    let changed = state.tools.update_ytdlp().await?;
-    Ok((state.tools.ytdlp_version().await, changed))
 }
 
 #[tauri::command]

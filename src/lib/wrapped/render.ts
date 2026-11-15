@@ -62,14 +62,14 @@ function image(ctx: CanvasRenderingContext2D, img: HTMLImageElement | null, x: n
   ctx.restore();
 }
 
-/** The cover colors as soft light from the top, melting into near-black (like the app). */
+/** The cover colors as soft light over the whole card, under an even dim (like the app). */
 function backdrop(ctx: CanvasRenderingContext2D, colors: Rgb[]): void {
   ctx.fillStyle = BG;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
   const spots: [number, number, number][] = [
-    [80, 40, 340],
-    [300, 0, 320],
-    [500, 120, 300],
+    [80, 40, 360],
+    [480, 300, 340],
+    [120, 620, 340],
   ];
   spots.forEach(([x, y, r], i) => {
     const c = colors[i] ?? colors[0];
@@ -81,9 +81,9 @@ function backdrop(ctx: CanvasRenderingContext2D, colors: Rgb[]): void {
     ctx.fillRect(0, 0, CARD_W, CARD_H);
   });
   const shade = ctx.createLinearGradient(0, 0, 0, CARD_H);
-  shade.addColorStop(0, "rgba(10,10,11,0)");
-  shade.addColorStop(0.45, "rgba(10,10,11,0.6)");
-  shade.addColorStop(0.8, BG);
+  shade.addColorStop(0, "rgba(10,10,11,0.05)");
+  shade.addColorStop(0.55, "rgba(10,10,11,0.5)");
+  shade.addColorStop(1, "rgba(10,10,11,0.7)");
   ctx.fillStyle = shade;
   ctx.fillRect(0, 0, CARD_W, CARD_H);
 }
@@ -111,7 +111,11 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, max: number, lines: n
 
 export async function renderCard(card: Card, colors: Rgb[], who: { name: string; avatar: string | null }): Promise<Uint8Array> {
   await Promise.all([document.fonts.load(`800 40px Inter`), document.fonts.load(`600 18px Inter`), document.fonts.load(`400 16px Inter`)]).catch(() => {});
-  const [avatar, ...covers] = await Promise.all([who.avatar ? loadImage(who.avatar) : Promise.resolve(null), ...(card.rows ?? []).map((r) => cover(r.cover))]);
+  const [avatar, hero, ...covers] = await Promise.all([
+    who.avatar ? loadImage(who.avatar) : Promise.resolve(null),
+    card.hero ? cover(card.hero.cover) : Promise.resolve(null),
+    ...(card.rows ?? []).map((r) => cover(r.cover)),
+  ]);
 
   const canvas = document.createElement("canvas");
   canvas.width = CARD_W * SCALE;
@@ -155,6 +159,30 @@ export async function renderCard(card: Card, colors: Rgb[], who: { name: string;
     font(ctx, 600, 22, 0.8);
     ctx.fillText(fit(ctx, card.unit ?? "", inner), PAD, y);
   }
+
+  if (card.hero) {
+    image(ctx, hero, PAD, 130, 250, false);
+    font(ctx, 800, 32);
+    let heroY = 130 + 250 + 52;
+    for (const line of wrap(ctx, card.hero.title, inner, 2)) {
+      ctx.fillText(line, PAD, heroY);
+      heroY += 38;
+    }
+    font(ctx, 600, 19, 0.8);
+    ctx.fillText(fit(ctx, card.hero.sub, inner), PAD, heroY + 2);
+    font(ctx, 400, 16, 0.62);
+    ctx.fillText(fit(ctx, card.hero.value, inner), PAD, heroY + 32);
+  }
+
+  card.grid?.forEach((cell, i) => {
+    const colW = (inner - 24) / 2;
+    const x = PAD + (i % 2) * (colW + 24);
+    const top = 124 + 64 + Math.floor(i / 2) * 120;
+    font(ctx, 600, 16, 0.62);
+    ctx.fillText(fit(ctx, cell.label, colW), x, top);
+    font(ctx, 800, 40);
+    ctx.fillText(fit(ctx, cell.value, colW), x, top + 48);
+  });
 
   card.rows?.forEach((row, i) => {
     const top = 118 + i * 84;

@@ -6,6 +6,7 @@ import { AudioEngine, type Jump } from "../audio/engine";
 import { t } from "../i18n/index.svelte";
 import { PlayCounter } from "../player/playCount";
 import * as Q from "../player/queue";
+import { warmNow } from "../player/warm";
 import { dialogs } from "./dialogs.svelte";
 import { history } from "./history.svelte";
 import { library } from "./library.svelte";
@@ -42,6 +43,9 @@ interface Saved extends Q.QueueState {
   volume: number;
   muted: boolean;
 }
+
+/** How long after start the restored song is looked up. */
+const RESTORE_WARM_MS = 2500;
 
 class Player {
   queue = $state<Q.QueueState>(Q.emptyQueue);
@@ -173,7 +177,11 @@ class Player {
     this.positionMs = this.restoreAtMs;
     this.durationMs = this.current?.track.durationMs ?? 0;
     const cur = this.current;
-    if (cur) api.mediaTrack(mediaInfo(cur.track)).catch(() => {});
+    if (!cur) return;
+    api.mediaTrack(mediaInfo(cur.track)).catch(() => {});
+    // The song that was playing is the likeliest first press of Play; it's looked up once the
+    // app has settled, so Play starts at once without slowing the start itself.
+    window.setTimeout(() => this.current?.uid === cur.uid && warmNow(cur.track), RESTORE_WARM_MS);
   }
 
   /** Stops audio and forgets everything in memory (sign-out). */

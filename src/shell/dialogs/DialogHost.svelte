@@ -32,7 +32,9 @@
       <MergeDialog playlistId={d.playlistId} />
     {:else if d.kind === "connection"}
       <ConnectionDialog />
-    {:else if d.kind === "update" || d.kind === "hardware"}
+    {:else if d.kind === "problem"}
+      {#await import("./ProblemDialog.svelte") then m}<m.default />{/await}
+    {:else if d.kind === "update" || d.kind === "hardware" || d.kind === "changelog"}
       <DesktopDialogs {d} />
     {:else if d.kind === "versions"}
       <VersionsDialog track={d.track} playlist={d.playlist} />

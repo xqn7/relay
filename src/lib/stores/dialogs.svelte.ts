@@ -11,6 +11,8 @@ export type Dialog =
   | { kind: "editLocal"; track: Track }
   | { kind: "merge"; playlistId: string }
   | { kind: "connection" }
+  | { kind: "problem" }
+  | { kind: "changelog"; version: string; notes: string }
   | { kind: "update"; info: UpdateInfo }
   | { kind: "hardware"; info: HardwareInfo }
   | { kind: "versions"; track: Track; playlist?: { id: string; itemId: string; onReplaced: () => void } }

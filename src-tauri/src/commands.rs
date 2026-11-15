@@ -278,8 +278,12 @@ pub fn warm_track(state: St, track: Track, quality: Quality) -> AppResult<bool> 
     if !track.is_sane() {
         return Err(AppError::new("invalid_input", "bad track"));
     }
-    if track.source == crate::sources::LOCAL || !state.net.online() || state.streams.get(&track.id).is_some() {
+    if track.source == crate::sources::LOCAL || state.streams.get(&track.id).is_some() {
         return Ok(true);
+    }
+    // Not "done": the page asks again once the connection is back.
+    if !state.net.online() {
+        return Ok(false);
     }
     let Ok(permit) = WARMING.clone().try_acquire_owned() else { return Ok(false) };
     let state = state.inner().clone();
@@ -296,6 +300,25 @@ pub fn warm_track(state: St, track: Track, quality: Quality) -> AppResult<bool> 
 
 const WARM_AT_ONCE: usize = 3;
 static WARMING: std::sync::LazyLock<Arc<tokio::sync::Semaphore>> = std::sync::LazyLock::new(|| Arc::new(tokio::sync::Semaphore::new(WARM_AT_ONCE)));
+
+/// Songs found by a line of their lyrics.
+#[tauri::command]
+pub async fn lyrics_search(state: St<'_>, query: String) -> AppResult<Vec<crate::lyrics::LyricHit>> {
+    if !crate::network::ensure_online(state.inner()).await {
+        return Err(AppError::new("offline", "no internet"));
+    }
+    crate::lyrics::search_by_line(&state, &query).await
+}
+
+/// The playable version of a song found by its lyrics: the best match on YouTube.
+#[tauri::command]
+pub async fn lyrics_hit_track(state: St<'_>, hit: crate::lyrics::LyricHit) -> AppResult<Track> {
+    let wanted = Track::imported("lyrics", &format!("{}-{}", hit.artist, hit.title), &hit.title, vec![hit.artist.clone()], hit.duration_ms, None, hit.album.clone());
+    let query = format!("{} {}", hit.artist, hit.title);
+    let results = state.yt.search(&query, crate::sources::SearchKind::Songs).await?;
+    let best = crate::matcher::best_match(&wanted, &results.tracks).or(results.tracks.first()).cloned();
+    best.ok_or_else(|| AppError::new("no_match", "not found on YouTube"))
+}
 
 #[tauri::command]
 pub fn queue_save(state: St, queue: Value) -> AppResult<()> {

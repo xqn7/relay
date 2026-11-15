@@ -74,6 +74,7 @@ pub(crate) fn map_track(t: TrackItem) -> Track {
         duration_ms: t.duration.map(|d| d as u64 * 1000),
         cover: best_thumb(&t.cover),
         is_video: t.track_type != TrackType::Track,
+        listens: t.view_count,
         source_id: t.id,
     }
 }
@@ -288,7 +289,7 @@ impl YouTube {
             avatar: best_thumb(&a.header_image),
             banner: a.header_image.iter().filter(|t| t.url.starts_with("https://")).max_by_key(|t| t.width).map(|t| t.url.clone()),
             about: a.description.filter(|d| !d.trim().is_empty()),
-            top_tracks: a.tracks.into_iter().map(map_track).filter(Track::is_sane).collect(),
+            top_tracks: most_played(a.tracks.into_iter().map(map_track).filter(Track::is_sane).collect()),
             albums: by_year(albums.into_iter().map(map_album).collect()),
             singles: by_year(singles.into_iter().map(map_album).collect()),
             similar: a.similar_artists.into_iter().map(map_artist).collect(),

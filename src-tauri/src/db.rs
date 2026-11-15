@@ -338,7 +338,10 @@ pub fn upsert_track_conn(c: &Connection, t: &Track) -> rusqlite::Result<()> {
     let data = serde_json::to_string(&stored).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     c.execute(
         "INSERT INTO tracks(id,source,source_id,data,updated_at) VALUES(?1,?2,?3,?4,?5)
-         ON CONFLICT(id) DO UPDATE SET data=excluded.data, updated_at=excluded.updated_at",
+         ON CONFLICT(id) DO UPDATE SET
+           data=CASE WHEN json_extract(excluded.data,'$.listens') IS NULL AND json_extract(tracks.data,'$.listens') IS NOT NULL
+                THEN json_set(excluded.data,'$.listens',json_extract(tracks.data,'$.listens')) ELSE excluded.data END,
+           updated_at=excluded.updated_at",
         params![t.id, t.source, t.source_id, data, now_secs()],
     )?;
     Ok(())

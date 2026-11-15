@@ -58,6 +58,9 @@ pub struct Track {
     /// matched. Filled in when lists are read from the library; never stored.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
+    /// How often the song was played or viewed on its service, when the service says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listens: Option<u64>,
 }
 
 impl Track {
@@ -94,6 +97,7 @@ impl Track {
             is_video: false,
             link: None,
             via: None,
+            listens: None,
         }
     }
 }
@@ -128,6 +132,12 @@ pub struct AlbumPage {
 }
 
 /// An artist page: hero, about text, top songs and releases.
+/// An artist's songs, most played first (songs without a count keep their order, at the end).
+pub fn most_played(mut tracks: Vec<Track>) -> Vec<Track> {
+    tracks.sort_by_key(|t| std::cmp::Reverse(t.listens.unwrap_or(0)));
+    tracks
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArtistPage {

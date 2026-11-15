@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { formatTime, type Track } from "../api";
-  import { t } from "../i18n/index.svelte";
+  import { compactCount, formatTime, type Track } from "../api";
+  import { i18n, t } from "../i18n/index.svelte";
   import { openArtist, playsFrom } from "../navigate";
-  import { history } from "../stores/history.svelte";
   import { library } from "../stores/library.svelte";
   import { offline } from "../stores/offline.svelte";
   import { player } from "../stores/player.svelte";
@@ -43,7 +42,8 @@
   const unmatched = $derived(track.via === "none");
   const unavailable = $derived(!offline.online && !offline.isAvailable(track));
   const downloaded = $derived(track.source !== "local" && offline.downloaded.has(track.id));
-  const plays = $derived(history.plays(track));
+  // Plays on YouTube or SoundCloud: how popular the song is, not how often you played it.
+  const listens = $derived(track.listens ?? 0);
 
   function onKey(e: KeyboardEvent) {
     if (e.key === "Enter") onactivate();
@@ -92,7 +92,7 @@
   </div>
   {#if showAlbum}<span class="album truncate">{track.album?.name ?? ""}</span>{/if}
   <LikeButton {track} quiet />
-  <span class="plays" title={plays ? t("plays.count", { n: plays }) : undefined}>{plays || ""}</span>
+  <span class="plays" title={listens ? t("listens.count", { n: listens, count: listens.toLocaleString(i18n.lang) }) : undefined}>{listens ? compactCount(listens, i18n.lang) : ""}</span>
   <span class="time">{track.durationMs ? formatTime(track.durationMs) : ""}</span>
   <button class="more" aria-label={t("menu.more")} onclick={(e) => (e.stopPropagation(), onmenu(e))}>
     <Icon name="more" size={18} />

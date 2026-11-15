@@ -11,7 +11,6 @@
   import { playsFrom } from "../lib/navigate";
   import { openPlaylistMenu } from "../lib/playlistMenu";
   import { dialogs } from "../lib/stores/dialogs.svelte";
-  import { history } from "../lib/stores/history.svelte";
   import { fail, library } from "../lib/stores/library.svelte";
   import { menu, type MenuItem } from "../lib/stores/menu.svelte";
   import { offline } from "../lib/stores/offline.svelte";
@@ -107,7 +106,7 @@
       case "length":
         return by((i) => i.track.durationMs ?? 0);
       case "plays":
-        return by((i) => history.plays(i.track), -1);
+        return by((i) => i.track.listens ?? 0, -1);
       default:
         return list;
     }

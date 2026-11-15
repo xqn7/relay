@@ -43,11 +43,12 @@
   const keys = $derived(itemIds ?? tracks.map((x, i) => `${x.id}#${i}`));
   let selected = $state<Set<number>>(new Set());
   // The first songs are the likeliest clicks: their links are looked up as soon as the list
-  // has songs, once per list.
-  let headWarmed = false;
+  // has songs, and again when the page shows another list in this same component.
+  let warmedHead = "";
   $effect(() => {
-    if (headWarmed || !warmFirst || !tracks.length) return;
-    headWarmed = true;
+    const head = tracks[0]?.id;
+    if (!warmFirst || !head || head === warmedHead) return;
+    warmedHead = head;
     for (const t of tracks.slice(0, LIST_HEAD)) warmNow(t);
   });
 

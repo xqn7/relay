@@ -229,6 +229,7 @@ mod tests {
             is_video: false,
             link: None,
             via: None,
+            listens: None,
         }
     }
 

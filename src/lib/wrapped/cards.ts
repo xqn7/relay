@@ -12,7 +12,7 @@ export interface CardRow {
 }
 
 export interface Card {
-  id: "intro" | "minutes" | "songs" | "artists" | "day" | "streak";
+  id: "intro" | "minutes" | "top" | "songs" | "artists" | "hour" | "day" | "streak" | "summary";
   kicker: string;
   title: string;
   /** A big number or date, with a small unit under it. */
@@ -20,6 +20,18 @@ export interface Card {
   unit?: string;
   note?: string;
   rows?: CardRow[];
+  /** One big cover with its song: the #1 of the period. */
+  hero?: CardRow;
+  /** The closing card: a few numbers side by side. */
+  grid?: { label: string; value: string }[];
+}
+
+/** Night owl, early bird…: what the busiest listening hour says. */
+function hourKind(hour: number): string {
+  if (hour >= 22 || hour < 4) return "wrapped.hourNight";
+  if (hour < 10) return "wrapped.hourMorning";
+  if (hour < 17) return "wrapped.hourDay";
+  return "wrapped.hourEvening";
 }
 
 type Translate = (key: string, vars?: Record<string, string | number>) => string;
@@ -53,6 +65,15 @@ export function buildCards(s: Stats, period: WrappedPeriod, lang: string, t: Tra
       note: t("wrapped.minutesNote", { plays: num(s.plays), songs: num(s.songs) }),
     },
   ];
+  const first = s.topSongs[0];
+  if (first) {
+    cards.push({
+      id: "top",
+      kicker: t("wrapped.topKicker"),
+      title: "",
+      hero: { cover: first.track.cover, title: first.track.title, sub: artistLine(first.track), value: plays(first.plays) },
+    });
+  }
   if (s.topSongs.length) {
     cards.push({
       id: "songs",
@@ -75,6 +96,10 @@ export function buildCards(s: Stats, period: WrappedPeriod, lang: string, t: Tra
       })),
     });
   }
+  if (s.peakHour != null) {
+    const at = new Date(2000, 0, 1, s.peakHour).toLocaleTimeString(lang, { hour: "numeric", minute: "2-digit" });
+    cards.push({ id: "hour", kicker: t("wrapped.hourKicker"), title: "", big: at, unit: t(hourKind(s.peakHour)), note: t("wrapped.hourNote", { time: at }) });
+  }
   if (s.topDay) {
     cards.push({
       id: "day",
@@ -95,6 +120,17 @@ export function buildCards(s: Stats, period: WrappedPeriod, lang: string, t: Tra
       note: t("wrapped.streakNote", { date: day(s.streakStart, { day: "numeric", month: "long" }) }),
     });
   }
+  cards.push({
+    id: "summary",
+    kicker: period.label,
+    title: t("wrapped.summaryTitle"),
+    grid: [
+      { label: t("wrapped.summaryMinutes"), value: num(s.minutes) },
+      { label: t("wrapped.summarySongs"), value: num(s.songs) },
+      { label: t("wrapped.summaryArtists"), value: num(s.artists) },
+      { label: t("wrapped.summaryTopArtist"), value: s.topArtists[0]?.name ?? "–" },
+    ],
+  });
   return cards;
 }
 

@@ -1,7 +1,7 @@
 <!-- Welcome setup, shown once right after an account is created: import music, set up the
      automatic backup (or restore one), pick the background, choose visual quality. Every
-     choice saves at once and stays changeable in Settings, so Skip and closing the app lose
-     nothing. -->
+     choice saves at once and stays changeable in Settings. It can't be skipped: every step
+     is gone through once. -->
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
   import BackgroundImage from "../../lib/backdrop/BackgroundImage.svelte";
@@ -100,14 +100,7 @@
   function pickBackground() {
     pickImage("image/jpeg,image/png,image/webp,image/gif", (file) => backgrounds.add(file));
   }
-
-  function onKey(e: KeyboardEvent) {
-    // Dialogs opened from here (import) handle their own keys.
-    if (e.key === "Escape" && !dialogs.current) onDone();
-  }
 </script>
-
-<svelte:window onkeydown={onKey} />
 
 <div class="welcome" role="dialog" aria-modal="true" aria-label={t("welcome.title")} transition:fade={{ duration: 220 }}>
   <div class="panel glass" in:fly={{ y: 14, duration: 260 }}>
@@ -118,7 +111,6 @@
         {/each}
       </div>
       <span class="count">{t("welcome.step", { n: step + 1, total: STEPS })}</span>
-      <Button variant="ghost" small onclick={onDone}>{t("welcome.skip")}</Button>
     </header>
 
     <div class="steps">
@@ -257,7 +249,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 16px 14px 0 24px;
+    padding: 22px 24px 0;
   }
   .progress {
     display: flex;

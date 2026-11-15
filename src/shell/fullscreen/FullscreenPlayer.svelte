@@ -2,7 +2,7 @@
      lyrics (or the lyrics editor) beside it. -->
 <script lang="ts">
   import { fade, fly, scale } from "svelte/transition";
-  import { api, coverAt, formatTime, proxiedCover, type Track } from "../../lib/api";
+  import { api, compactCount, coverAt, formatTime, proxiedCover, type Track } from "../../lib/api";
   import Backdrop from "../../lib/backdrop/Backdrop.svelte";
   import Icon from "../../lib/components/Icon.svelte";
   import IconButton from "../../lib/components/IconButton.svelte";
@@ -10,19 +10,19 @@
   import type { Rgb } from "../../lib/backdrop/colors";
   import SeekBar from "../../lib/components/SeekBar.svelte";
   import { dialogs } from "../../lib/stores/dialogs.svelte";
-  import { history } from "../../lib/stores/history.svelte";
   import { settings } from "../../lib/stores/settings.svelte";
   import RangePanel from "../RangePanel.svelte";
   import Visualizer from "./Visualizer.svelte";
   import { visual } from "../../lib/stores/visual.svelte";
   import Spinner from "../../lib/components/Spinner.svelte";
-  import { t } from "../../lib/i18n/index.svelte";
+  import { i18n, t } from "../../lib/i18n/index.svelte";
   import { openArtist } from "../../lib/navigate";
   import { offline } from "../../lib/stores/offline.svelte";
   import { player } from "../../lib/stores/player.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
   import WindowControls from "../WindowControls.svelte";
   import LyricsEditor from "./LyricsEditor.svelte";
+  import Slider from "../../lib/components/Slider.svelte";
   import LyricsView from "./LyricsView.svelte";
 
   const track = $derived(player.current?.track ?? null);
@@ -53,6 +53,7 @@
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape" && !editing && !e.defaultPrevented) close();
   }
+  const volumeIcon = $derived(player.muted || player.volume === 0 ? "volumeOff" : player.volume < 0.5 ? "volumeLow" : "volume");
 </script>
 
 <svelte:window onkeydown={onKey} />
@@ -94,7 +95,7 @@
                       openArtist(a, tr.source);
                     }}>{a.name}</button
                   >{/each}
-                {#if history.plays(tr) > 0}<span class="plays"> · {t("plays.count", { n: history.plays(tr) })}</span>{/if}
+                {#if tr.listens}<span class="plays"> · {t("listens.count", { n: tr.listens, count: compactCount(tr.listens, i18n.lang) })}</span>{/if}
               </p>
             </div>
           {/each}
@@ -136,6 +137,12 @@
           label={player.queue.repeat === "one" ? t("player.repeatOne") : player.queue.repeat === "all" ? t("player.repeatAll") : t("player.repeatOff")}
           active={player.queue.repeat !== "off"}
           onclick={() => player.cycleRepeat()} />
+      </div>
+
+      <!-- Volume stays in reach while the lyrics are open, without leaving fullscreen. -->
+      <div class="volume" onwheel={(e) => (e.preventDefault(), player.setVolume(player.volume + (e.deltaY < 0 ? 0.05 : -0.05)))}>
+        <IconButton icon={volumeIcon} label={player.muted ? t("player.unmute") : t("player.mute")} onclick={() => player.toggleMute()} />
+        <Slider label={t("player.volume")} value={player.muted ? 0 : player.volume} oninput={(v) => player.setVolume(v)} onchange={(v) => player.setVolume(v)} />
       </div>
 
     </section>
@@ -311,5 +318,16 @@
   .pane {
     grid-area: 1 / 1;
     min-height: 0;
+  }
+  .volume {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: min(260px, 100%);
+    margin: 14px auto 0;
+    color: var(--text-2);
+  }
+  .volume :global(.slider) {
+    flex: 1;
   }
 </style>

@@ -111,8 +111,8 @@ fn track_from(data: &str) -> Option<Track> {
     serde_json::from_str(data).ok()
 }
 
-/// For imported songs: which source plays them ("none" if nothing matched), and the
-/// matched cover when the import service gave none.
+/// For imported songs: which source plays them ("none" if nothing matched), the matched
+/// cover when the import service gave none, and the matched song's play count.
 pub fn decorate(c: &Connection, tracks: &mut [Track]) -> rusqlite::Result<()> {
     let mut stmt = c.prepare_cached(
         "SELECT m.track_id, t.data FROM matches m LEFT JOIN tracks t ON t.id = m.track_id WHERE m.source=?1 AND m.source_id=?2",
@@ -123,6 +123,7 @@ pub fn decorate(c: &Connection, tracks: &mut [Track]) -> rusqlite::Result<()> {
             Some((Some(_), Some(data))) => {
                 if let Some(m) = track_from(&data) {
                     t.via = Some(m.source);
+                    t.listens = t.listens.or(m.listens);
                     if t.cover.is_none() {
                         t.cover = m.cover;
                     }

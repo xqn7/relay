@@ -26,6 +26,8 @@ export interface Track {
   link: string | null;
   /** Imported songs: the source their audio plays from, or "none" when nothing matched. */
   via?: SourceId | "none";
+  /** Plays or views on the song's service, when it says. */
+  listens?: number;
 }
 
 export interface Collection {
@@ -317,6 +319,7 @@ export interface Stats {
   longestStreak: number;
   streakStart: number | null;
   firstPlay: number | null;
+  peakHour: number | null;
 }
 
 export type PinKind = "playlist" | "album" | "artist";
@@ -346,6 +349,15 @@ export interface ToolProgress {
   phase: "waiting" | "downloading" | "unpacking" | "ready" | "failed";
   done: number;
   total: number;
+}
+
+/** A song found by a line of its lyrics. */
+export interface LyricHit {
+  title: string;
+  artist: string;
+  album: string | null;
+  durationMs: number | null;
+  line: string;
 }
 
 export interface AppError {
@@ -417,8 +429,6 @@ export const api = {
   discordPreview: () => invoke<DiscordActivity | null>("discord_preview"),
   updateCheck: () => invoke<UpdateInfo | null>("update_check"),
   updateInstall: () => invoke<void>("update_install"),
-  ytdlpVersion: () => invoke<string | null>("ytdlp_version"),
-  ytdlpUpdate: () => invoke<[string | null, boolean]>("ytdlp_update"),
   youtubeStatus: () => invoke<{ signedIn: boolean; expired: boolean }>("youtube_status"),
   youtubeSignIn: () => invoke<void>("youtube_sign_in"),
   youtubeSignOut: () => invoke<void>("youtube_sign_out"),
@@ -499,6 +509,12 @@ export const api = {
   netStatus: () => invoke<boolean>("net_status"),
   netCheck: () => invoke<boolean>("net_check"),
   connectionCheck: () => invoke<ConnectionCheck[]>("connection_check"),
+  logTail: () => invoke<string>("log_tail"),
+  releaseNotes: () => invoke<string>("release_notes"),
+  lyricsSearch: (query: string) => invoke<LyricHit[]>("lyrics_search", { query }),
+  lyricsHitTrack: (hit: LyricHit) => invoke<Track>("lyrics_hit_track", { hit }),
+  reportProblem: (message: string, picture: Uint8Array) => invoke<void>("report_problem", picture, { headers: { message: encodeURIComponent(message) } }),
+  reportError: (what: string) => invoke<void>("report_error", { what }),
   backupCreate: () => invoke<boolean>("backup_create"),
   backupRestore: () => invoke<number>("backup_restore"),
   backupSuggestedFolder: () => invoke<string>("backup_suggested_folder"),
@@ -651,6 +667,11 @@ export function coverAt(url: string | null, size: number): string | null {
   if (/googleusercontent\.com|ggpht\.com/.test(url)) return url.replace(/=w\d+-h\d+[^&?#]*$/, `=w${size}-h${size}-l90-rj`);
   if (url.includes("sndcdn.com") && size <= 120) return url.replace("-t500x500.", "-t120x120.");
   return url;
+}
+
+/** "1.2M", "34K": big counts as people read them, in the UI language. */
+export function compactCount(n: number, lang: string): string {
+  return new Intl.NumberFormat(lang, { notation: "compact", maximumFractionDigits: 1 }).format(n);
 }
 
 export function formatTime(ms: number | null | undefined): string {

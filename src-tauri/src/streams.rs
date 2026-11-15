@@ -210,6 +210,8 @@ pub async fn prepare(state: &Arc<AppState>, track: &Track, quality: Quality, ret
     let resolution = match resolver::resolve(state, track, quality, retry).await {
         Ok(r) => r,
         Err(e) => {
+            eprintln!("can't play {} ({}): [{}] {}", track.id, track.title, e.code, e.detail);
+            crate::report::error(state, e.code, &format!("can't play {}: {}", track.id, e.detail));
             crate::network::suspect(state, e.code);
             return Err(e);
         }

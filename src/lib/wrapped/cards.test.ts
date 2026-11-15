@@ -28,6 +28,7 @@ const empty: Stats = {
   longestStreak: 0,
   streakStart: null,
   firstPlay: null,
+  peakHour: null,
 };
 
 describe("wrapped periods", () => {
@@ -50,7 +51,7 @@ describe("wrapped cards", () => {
   const period = yearPeriod(new Date(2026, 5, 1), 0);
 
   it("only shows what there is", () => {
-    expect(buildCards(empty, period, "en", t).map((c) => c.id)).toEqual(["intro", "minutes"]);
+    expect(buildCards(empty, period, "en", t).map((c) => c.id)).toEqual(["intro", "minutes", "summary"]);
   });
 
   it("builds every card from full stats", () => {
@@ -65,12 +66,16 @@ describe("wrapped cards", () => {
       topDay: { day: new Date(2026, 2, 3).getTime() / 1000, minutes: 95 },
       longestStreak: 9,
       streakStart: new Date(2026, 1, 1).getTime() / 1000,
+      peakHour: 23,
     };
     const cards = buildCards(s, period, "en", t);
-    expect(cards.map((c) => c.id)).toEqual(["intro", "minutes", "songs", "artists", "day", "streak"]);
+    expect(cards.map((c) => c.id)).toEqual(["intro", "minutes", "top", "songs", "artists", "hour", "day", "streak", "summary"]);
     expect(cards[1].big).toBe("1,234");
-    expect(cards[2].rows?.[0].value).toContain('"count":"12"');
-    expect(cards[4].big).toBe("March 3");
+    expect(cards[2].hero?.title).toBe("Song a");
+    expect(cards[3].rows?.[0].value).toContain('"count":"12"');
+    expect(cards[5].unit).toBe("wrapped.hourNight");
+    expect(cards[6].big).toBe("March 3");
+    expect(cards[8].grid?.[3].value).toBe("Artist");
     expect(leadCover(s)).toBe("https://x.test/a.jpg");
   });
 

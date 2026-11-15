@@ -47,6 +47,14 @@ export interface Toast {
 const TOAST_MS = 3600;
 let nextId = 1;
 
+function prepareUnfinished(): boolean {
+  try {
+    return localStorage.getItem("relay.helpersPending") === "1";
+  } catch {
+    return false;
+  }
+}
+
 class UiStore {
   private stack = $state<Entry[]>([{ route: { name: "home" }, key: 0, scroll: 0 }]);
   private pos = $state(0);
@@ -56,8 +64,9 @@ class UiStore {
   settingsOpen = $state(false);
   /** The welcome setup after creating an account. */
   welcome = $state(false);
-  /** The helper downloads screen that follows the welcome setup. */
-  preparing = $state(false);
+  /** The helper downloads screen: after the welcome setup, and on later starts until both
+   * helpers are there (the app was closed while they downloaded). */
+  preparing = $state(prepareUnfinished());
   queueOpen = $state(false);
   fullscreenOpen = $state(false);
   /** Files are being dragged over the window from outside. */

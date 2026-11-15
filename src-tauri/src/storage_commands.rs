@@ -127,6 +127,31 @@ pub async fn connection_check(state: St<'_>) -> AppResult<Vec<Check>> {
     Ok(network::check_all(state.inner()).await)
 }
 
+/// "Send a problem report": the text comes in a header, the optional screenshot as the body.
+#[tauri::command]
+pub async fn report_problem(state: St<'_>, request: tauri::ipc::Request<'_>) -> AppResult<()> {
+    let message = request.headers().get("message").and_then(|v| v.to_str().ok()).map(crate::streams::percent_decode).unwrap_or_default();
+    let picture = match request.body() {
+        tauri::ipc::InvokeBody::Raw(bytes) => Some(bytes.clone()),
+        _ => None,
+    };
+    crate::report::problem(&state, &message, picture).await
+}
+
+/// An error the page ran into (a script error), sent like the backend's own.
+#[tauri::command]
+pub fn report_error(state: St, what: String) {
+    let what: String = what.chars().take(1000).collect();
+    eprintln!("page error: {what}");
+    crate::report::error(state.inner(), "page", &what);
+}
+
+/// The newest lines of the app's log, for the connection check's copied details.
+#[tauri::command]
+pub fn log_tail() -> String {
+    crate::log::tail()
+}
+
 // ---- backup -------------------------------------------------------------------------------
 
 #[tauri::command]

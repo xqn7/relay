@@ -1,4 +1,5 @@
-<!-- "Update downloaded" with its changelog, and the hardware behind the visual quality advice. -->
+<!-- "Update downloaded" with its changelog, "What's new" after an update, and the hardware behind
+     the visual quality advice. -->
 <script lang="ts">
   import Button from "../../lib/components/Button.svelte";
   import Dialog from "../../lib/components/Dialog.svelte";
@@ -7,7 +8,7 @@
   import { dialogs, type Dialog as D } from "../../lib/stores/dialogs.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
 
-  let { d }: { d: Extract<D, { kind: "update" } | { kind: "hardware" }> } = $props();
+  let { d }: { d: Extract<D, { kind: "update" } | { kind: "hardware" } | { kind: "changelog" }> } = $props();
   let busy = $state(false);
 
   async function install() {
@@ -31,6 +32,13 @@
     {#snippet footer()}
       <Button variant="ghost" onclick={() => dialogs.close()}>{t("update.later")}</Button>
       <Button variant="primary" {busy} onclick={install}>{t("update.restart")}</Button>
+    {/snippet}
+  </Dialog>
+{:else if d.kind === "changelog"}
+  <Dialog title={t("changelog.title", { version: d.version })} width={460} onclose={() => dialogs.close()}>
+    <pre class="notes">{d.notes.trim()}</pre>
+    {#snippet footer()}
+      <Button variant="primary" onclick={() => dialogs.close()}>{t("changelog.ok")}</Button>
     {/snippet}
   </Dialog>
 {:else}

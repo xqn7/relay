@@ -8,8 +8,8 @@
   import { coverColors, rgba } from "./extract";
 
   // `place`: where this backdrop is drawn; a custom background image can be limited to some
-  // places. The fullscreen player and the idle screen fill the whole view with color instead
-  // of melting into near-black below the top.
+  // places. The colors spread over the whole window; the fullscreen player and the idle screen
+  // show them brighter, the app keeps them dimmer so lists stay readable.
   // `colors` can be bound by views that draw in the cover's colors too (the visualizer).
   let {
     cover,
@@ -70,40 +70,37 @@
   }
   .blob {
     position: absolute;
-    width: 75vw;
-    height: 90vh;
+    width: 80vw;
+    height: 110vh;
     opacity: var(--bd-strength);
     will-change: transform;
   }
   .a {
-    left: -18vw;
-    top: -42vh;
+    left: -20vw;
+    top: -40vh;
     background: radial-gradient(closest-side, var(--bd-1), transparent);
     animation: drift-a 46s ease-in-out infinite alternate;
   }
   .b {
-    left: 30vw;
-    top: -50vh;
+    left: 42vw;
+    top: 0;
     background: radial-gradient(closest-side, var(--bd-2), transparent);
     animation: drift-b 58s ease-in-out infinite alternate;
   }
   .c {
-    left: 62vw;
-    top: -38vh;
+    left: -6vw;
+    top: 48vh;
     background: radial-gradient(closest-side, var(--bd-3), transparent);
     animation: drift-c 52s ease-in-out infinite alternate;
   }
-  /* The colors live at the top and melt into near-black, so lists stay calm and readable. */
+  /* The color covers the whole window under an even dim, so lists stay calm and readable. */
   .shade {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(var(--bg-rgb), 0) 0%, rgba(var(--bg-rgb), 0.55) 34%, var(--bg) 62%);
+    background: linear-gradient(to bottom, rgba(var(--bg-rgb), 0.2), rgba(var(--bg-rgb), 0.5) 45%, rgba(var(--bg-rgb), 0.62));
   }
   .full .blob {
     height: 150vh;
-  }
-  .full .c {
-    top: 10vh;
   }
   .full .shade {
     background: linear-gradient(to bottom, rgba(var(--bg-rgb), 0.18), rgba(var(--bg-rgb), 0.5) 70%, rgba(var(--bg-rgb), 0.72));

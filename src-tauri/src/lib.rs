@@ -17,6 +17,7 @@ mod importer;
 mod library;
 mod library_commands;
 mod local;
+mod log;
 mod lyrics;
 mod lyrics_commands;
 mod m3u;
@@ -30,6 +31,7 @@ mod overlays;
 mod personal_commands;
 mod power;
 mod profile;
+mod report;
 mod resolver;
 mod secrets;
 mod sound;
@@ -89,6 +91,7 @@ pub struct AppState {
     pub discover: mixes::DiscoverCache,
     pub desktop: desktop::Desktop,
     pub updater: updater::Updater,
+    pub reports: report::Reports,
     pub youtube_account: youtube_account::YouTubeAccount,
 }
 
@@ -161,6 +164,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let local_dir = app.path().app_local_data_dir()?;
     std::fs::create_dir_all(&data_dir)?;
     std::fs::create_dir_all(&local_dir)?;
+    log::start(&local_dir);
 
     let in_tray = std::env::args().any(|a| a == desktop::TRAY_ARG);
     let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
@@ -213,6 +217,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         discover: mixes::DiscoverCache::default(),
         desktop: desktop::Desktop::new(in_tray),
         updater: updater::Updater::new(&local_dir),
+        reports: report::Reports::default(),
         youtube_account: youtube_account::YouTubeAccount::load(),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone())?,
         tools,
@@ -227,6 +232,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     };
     let state = Arc::new(state);
     app.manage(state.clone());
+    report::catch_panics(&state);
     {
         let app = handle.clone();
         state.tools.set_reporter(move |p| {
@@ -266,6 +272,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             storage::sync(&state);
             backup::schedule(&state);
             backup::watch(&state);
+            check_ytdlp(&state).await;
             // ffmpeg a minute in, so the first video import or MP3 export doesn't wait for it.
             tokio::time::sleep(FFMPEG_PREFETCH_DELAY).await;
             if state.net.online() && !desktop::is_game(&state) {
@@ -306,6 +313,22 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         }
     });
     Ok(())
+}
+
+/// On start: does yt-dlp run at all (an antivirus can block it), and is it the newest?
+async fn check_ytdlp(state: &Arc<AppState>) {
+    match state.tools.ytdlp_health().await {
+        tools::Health::Blocked => {
+            eprintln!("yt-dlp is blocked on this PC");
+            report::error(state, "helper_blocked", "yt-dlp doesn't run, even after downloading it again (antivirus?)");
+            let _ = state.app.emit("helper-blocked", ());
+        }
+        tools::Health::Repaired => report::error(state, "helper_repaired", "yt-dlp didn't run and was downloaded again"),
+        tools::Health::Ok | tools::Health::Missing => {}
+    }
+    if state.net.online() {
+        state.tools.update_soon();
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -350,6 +373,8 @@ pub fn run() {
             commands::prepare_track,
             commands::prefetch_track,
             commands::warm_track,
+            commands::lyrics_search,
+            commands::lyrics_hit_track,
             commands::queue_save,
             commands::queue_load,
             commands::media_track,
@@ -420,6 +445,9 @@ pub fn run() {
             storage_commands::net_status,
             storage_commands::net_check,
             storage_commands::connection_check,
+            storage_commands::log_tail,
+            storage_commands::report_problem,
+            storage_commands::report_error,
             storage_commands::backup_create,
             storage_commands::backup_restore,
             storage_commands::backup_folder_pick,
@@ -474,9 +502,8 @@ pub fn run() {
             desktop_commands::hardware_info,
             desktop_commands::discord_preview,
             desktop_commands::update_check,
+            desktop_commands::release_notes,
             desktop_commands::update_install,
-            desktop_commands::ytdlp_version,
-            desktop_commands::ytdlp_update,
             desktop_commands::youtube_status,
             desktop_commands::youtube_sign_in,
             desktop_commands::youtube_sign_out,

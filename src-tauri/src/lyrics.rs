@@ -351,6 +351,63 @@ pub fn pick(items: &[Value], artist: &str, title: &str, duration_ms: Option<u64>
     best.map(|(_, l)| l)
 }
 
+/// A song found by a line of its lyrics.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LyricHit {
+    pub title: String,
+    pub artist: String,
+    pub album: Option<String>,
+    pub duration_ms: Option<u64>,
+    /// The line that matched, to show why the song came up.
+    pub line: String,
+}
+
+const MAX_HITS: usize = 12;
+
+/// Songs whose lyrics contain `query` (LRCLIB's full-text search), best match first.
+pub async fn search_by_line(state: &AppState, query: &str) -> AppResult<Vec<LyricHit>> {
+    let query = query.trim();
+    if query.chars().count() < 4 {
+        return Ok(Vec::new());
+    }
+    let url = format!("{LRCLIB}/search?q={}", encode_query(query));
+    let Some(found) = lrclib_request(state, &url).await? else { return Ok(Vec::new()) };
+    Ok(hits_from(&found, query))
+}
+
+/// Validates LRCLIB's answer: one entry per song, only those whose lyrics hold the words.
+fn hits_from(found: &Value, query: &str) -> Vec<LyricHit> {
+    let words: Vec<String> = query.to_lowercase().split_whitespace().map(str::to_string).collect();
+    let mut seen = std::collections::HashSet::new();
+    found
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| {
+            let title = r["trackName"].as_str()?.trim();
+            let artist = r["artistName"].as_str()?.trim();
+            if title.is_empty() || artist.is_empty() || title.len() > 300 || artist.len() > 300 {
+                return None;
+            }
+            let lyrics = r["plainLyrics"].as_str().unwrap_or("");
+            let line = lyrics.lines().find(|l| {
+                let l = l.to_lowercase();
+                words.iter().all(|w| l.contains(w.as_str()))
+            })?;
+            seen.insert(format!("{}\u{1}{}", artist.to_lowercase(), title.to_lowercase())).then(|| LyricHit {
+                title: title.to_string(),
+                artist: artist.to_string(),
+                album: r["albumName"].as_str().map(str::trim).filter(|a| !a.is_empty()).map(str::to_string),
+                duration_ms: r["duration"].as_f64().filter(|d| *d > 0.0).map(|d| (d * 1000.0) as u64),
+                line: line.trim().chars().take(200).collect(),
+            })
+        })
+        .take(MAX_HITS)
+        .collect()
+}
+
 /// GET from LRCLIB; Ok(None) when it has no such record.
 async fn lrclib_request(state: &AppState, url: &str) -> AppResult<Option<Value>> {
     let resp = state.http.send(url, |c| c.get(url).header(USER_AGENT, LRCLIB_AGENT)).await?;
@@ -421,6 +478,20 @@ async fn youtube(state: &AppState, track: &Track) -> AppResult<Option<Lyrics>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lyric_hits_need_the_words_and_are_unique() {
+        let found = serde_json::json!([
+            { "trackName": "Song A", "artistName": "Band", "duration": 200.0, "plainLyrics": "first line\nwe will rock you now\nlast" },
+            { "trackName": "song a", "artistName": "band", "duration": 201.0, "plainLyrics": "we will rock you" },
+            { "trackName": "Other", "artistName": "X", "plainLyrics": "nothing like it" },
+            { "trackName": "", "artistName": "Y", "plainLyrics": "we will rock you" }
+        ]);
+        let hits = hits_from(&found, "Rock You");
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].line, "we will rock you now");
+        assert_eq!(hits[0].duration_ms, Some(200_000));
+    }
     use serde_json::json;
 
     #[test]

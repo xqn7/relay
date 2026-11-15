@@ -8,7 +8,7 @@ use crate::library::decorate;
 use crate::matcher::fold;
 use crate::sources::Track;
 use crate::util::{now_secs, uuid_v4};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashMap;
 
@@ -57,6 +57,8 @@ pub struct Stats {
     pub streak_start: Option<i64>,
     /// Time of the first play ever counted in the period.
     pub first_play: Option<i64>,
+    /// The local hour (0–23) with the most listening.
+    pub peak_hour: Option<i64>,
 }
 
 fn track_from(data: &str) -> Option<Track> {
@@ -204,6 +206,14 @@ pub fn stats(db: &Db, account: &str, from: i64, to: i64, tz_minutes: i64) -> App
              WHERE account_id=?1 AND played_at>=?2 AND played_at<?3 GROUP BY d ORDER BY d",
         )?;
         let days: Vec<(i64, i64)> = s.query_map(params![account, from, to, shift], |r| Ok((r.get(0)?, r.get(1)?)))?.collect::<rusqlite::Result<_>>()?;
+        let peak_hour: Option<i64> = c
+            .query_row(
+                "SELECT ((played_at+?4)%86400)/3600 AS h FROM plays
+                 WHERE account_id=?1 AND played_at>=?2 AND played_at<?3 GROUP BY h ORDER BY SUM(ms_listened) DESC LIMIT 1",
+                params![account, from, to, shift],
+                |r| r.get(0),
+            )
+            .optional()?;
         let first_play: Option<i64> =
             c.query_row("SELECT MIN(played_at) FROM plays WHERE account_id=?1 AND played_at>=?2 AND played_at<?3", params![account, from, to], |r| r.get(0))?;
 
@@ -226,6 +236,7 @@ pub fn stats(db: &Db, account: &str, from: i64, to: i64, tz_minutes: i64) -> App
             longest_streak,
             streak_start: start.map(to_local_midnight),
             first_play,
+            peak_hour,
         })
     })
 }
@@ -248,6 +259,7 @@ mod tests {
             is_video: false,
             link: None,
             via: None,
+            listens: None,
         }
     }
 

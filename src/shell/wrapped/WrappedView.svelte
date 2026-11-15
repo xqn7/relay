@@ -102,7 +102,11 @@
   {:else if card}
     <div class="stage">
       <IconButton icon="back" label={t("wrapped.previous")} variant="solid" disabled={index === 0} onclick={() => go(-1)} />
-      <div class="frame" style:width="{CARD_W * scale}px" style:height="{CARD_H * scale}px">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="frame" style:width="{CARD_W * scale}px" style:height="{CARD_H * scale}px" onclick={(e) => go(e.offsetX < (CARD_W * scale) / 3 ? -1 : 1)}>
+        <div class="progress" aria-hidden="true">
+          {#each cards as c, i (c.id)}<span class:seen={i <= index}></span>{/each}
+        </div>
         {#key index}
           <div
             class="card"
@@ -126,6 +130,21 @@
             {#if card.big}
               <div class="big">{card.big}</div>
               <div class="unit">{card.unit}</div>
+            {/if}
+            {#if card.hero}
+              <div class="hero">
+                <Cover src={card.hero.cover} size={250} radius={14} fallback="music" />
+                <div class="hero-title">{card.hero.title}</div>
+                <div class="hero-sub truncate">{card.hero.sub}</div>
+                <div class="hero-value">{card.hero.value}</div>
+              </div>
+            {/if}
+            {#if card.grid}
+              <dl class="grid">
+                {#each card.grid as cell (cell.label)}
+                  <div><dt>{cell.label}</dt><dd class="truncate">{cell.value}</dd></div>
+                {/each}
+              </dl>
             {/if}
             {#if card.rows}
               <ol>
@@ -153,9 +172,6 @@
       <IconButton icon="forward" label={t("wrapped.next")} variant="solid" disabled={index === cards.length - 1} onclick={() => go(1)} />
     </div>
     <div class="bottom">
-      <div class="dots" aria-hidden="true">
-        {#each cards as c, i (c.id)}<span class:on={i === index}></span>{/each}
-      </div>
       <Button variant="secondary" icon="download" busy={saving} onclick={save}>{t("wrapped.save")}</Button>
     </div>
   {/if}
@@ -216,15 +232,15 @@
     position: absolute;
     inset: 0;
     background:
-      radial-gradient(340px 340px at 80px 40px, var(--bd-1), transparent),
-      radial-gradient(320px 320px at 300px 0, var(--bd-2), transparent),
-      radial-gradient(300px 300px at 500px 120px, var(--bd-3), transparent);
+      radial-gradient(360px 360px at 80px 40px, var(--bd-1), transparent),
+      radial-gradient(340px 340px at 480px 300px, var(--bd-2), transparent),
+      radial-gradient(340px 340px at 120px 620px, var(--bd-3), transparent);
   }
   .glow::after {
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(10, 10, 11, 0) 0%, rgba(10, 10, 11, 0.6) 45%, var(--bg) 80%);
+    background: linear-gradient(to bottom, rgba(10, 10, 11, 0.05), rgba(10, 10, 11, 0.5) 55%, rgba(10, 10, 11, 0.7));
   }
   .card > :not(.glow, footer) {
     position: relative;
@@ -323,18 +339,70 @@
     gap: var(--s3);
     padding: var(--s3) 0 var(--s5);
   }
-  .dots {
-    display: flex;
-    gap: 6px;
+  .frame {
+    cursor: pointer;
   }
-  .dots span {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: rgba(var(--ink), 0.25);
+  .progress {
+    position: absolute;
+    z-index: 2;
+    top: 14px;
+    left: 18px;
+    right: 18px;
+    display: flex;
+    gap: 4px;
+    pointer-events: none;
+  }
+  .progress span {
+    flex: 1;
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.22);
     transition: background var(--t) var(--ease);
   }
-  .dots span.on {
-    background: #fff;
+  .progress span.seen {
+    background: rgba(255, 255, 255, 0.9);
+  }
+  .hero {
+    margin-top: 34px;
+  }
+  .hero-title {
+    margin-top: 26px;
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 38px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .hero-sub {
+    margin-top: 6px;
+    font-size: 19px;
+    font-weight: 600;
+    color: rgba(var(--ink), 0.8);
+  }
+  .hero-value {
+    margin-top: 10px;
+    font-size: 16px;
+    color: var(--text-2);
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 34px 24px;
+    margin: 64px 0 0;
+  }
+  .grid dt {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-2);
+  }
+  .grid dd {
+    margin: 6px 0 0;
+    font-size: 40px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
   }
 </style>

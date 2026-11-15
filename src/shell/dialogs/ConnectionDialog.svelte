@@ -15,17 +15,30 @@
   const ids: ConnectionCheck["id"][] = ["internet", "youtube", "soundcloud", "spotify", "covers", "lyrics"];
   let checks = $state<ConnectionCheck[] | null>(null);
   let running = $state(false);
+  let latest = 0;
+
+  /** The backend gives up after 30 s; this catches an app too busy to answer at all. */
+  const NO_ANSWER_MS = 45_000;
+  /** Copying waits this long for the log before it copies without it. */
+  const LOG_WAIT_MS = 3000;
 
   async function run() {
+    const me = ++latest;
     running = true;
     checks = null;
+    let timer = 0;
+    const noAnswer = new Promise<never>((_, reject) => {
+      timer = window.setTimeout(() => reject(new Error("Relay did not answer within 45 s")), NO_ANSWER_MS);
+    });
     try {
-      checks = await api.connectionCheck();
+      const result = await Promise.race([api.connectionCheck(), noAnswer]);
+      if (me === latest) checks = result;
     } catch (e) {
       console.error(e);
-      checks = ids.map((id) => ({ id, ok: false, code: "generic", detail: String(e) }));
+      if (me === latest) checks = ids.map((id) => ({ id, ok: false, code: "timeout", detail: String(e) }));
     } finally {
-      running = false;
+      clearTimeout(timer);
+      if (me === latest) running = false;
     }
   }
 
@@ -41,10 +54,14 @@
 
   const allOk = $derived(checks?.every((c) => c.ok) ?? false);
 
-  function copy() {
-    if (!checks) return;
+  /** Works while the check still runs too: then the log is what shows where it hangs. */
+  async function copy() {
     const lines = [`Relay connection check, ${new Date().toISOString()}`, `User agent: ${navigator.userAgent}`, ""];
-    for (const c of checks) lines.push(`${c.ok ? "PASS" : "FAIL"}  ${c.id}${c.ok ? "" : `  [${c.code}] ${c.detail}`}`);
+    if (checks) for (const c of checks) lines.push(`${c.ok ? "PASS" : "FAIL"}  ${c.id}${c.ok ? "" : `  [${c.code}] ${c.detail}`}`);
+    else lines.push("Still checking.");
+    const noLog = new Promise<string>((resolve) => setTimeout(() => resolve("(the app didn't answer)"), LOG_WAIT_MS));
+    const log = await Promise.race([api.logTail(), noLog]).catch(() => "");
+    if (log) lines.push("", "Log:", log);
     navigator.clipboard.writeText(lines.join("\n")).then(() => ui.toast(t("connection.copied"), "check"));
   }
 </script>
@@ -65,7 +82,7 @@
     {/each}
   </ul>
   {#snippet footer()}
-    <Button variant="ghost" icon="copy" disabled={!checks} onclick={copy}>{t("connection.copy")}</Button>
+    <Button variant="ghost" icon="copy" onclick={copy}>{t("connection.copy")}</Button>
     <Button variant="primary" icon="refresh" disabled={running} onclick={run}>{t("connection.retry")}</Button>
   {/snippet}
 </Dialog>

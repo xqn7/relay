@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade, fly } from "svelte/transition";
-  import { api, isAppError, SOURCES, type Collection, type RemoteList, type SearchKind, type SearchResults, type SearchSource } from "../lib/api";
+  import { api, isAppError, SOURCES, type Collection, type LyricHit, type RemoteList, type SearchKind, type SearchResults, type SearchSource } from "../lib/api";
   import Button from "../lib/components/Button.svelte";
   import { dialogs } from "../lib/stores/dialogs.svelte";
   import { errorText } from "./dialogs/importText";
@@ -25,20 +25,30 @@
   let query = $state("");
   /** A pasted link is opened, not searched for. */
   let link = $state<LinkStatus | null>(null);
-  let kind = $state<SearchKind>("all");
+  /** "lyrics" finds songs by a line of their words instead of by name. */
+  let kind = $state<SearchKind | "lyrics">("all");
+  /** Show only one service's results; the other stays loaded for switching back. */
+  let only = $state<SearchSource | null>(null);
+  let lyricHits = $state<{ state: "loading" } | { state: "done"; hits: LyricHit[] } | { state: "error"; offline: boolean } | null>(null);
+  let opening = $state<LyricHit | null>(null);
   let results = $state<Partial<Record<SearchSource, Status>>>({});
   let history = $state<string[]>([]);
   let input = $state<HTMLInputElement>();
   let timer = 0;
   let seq = 0;
 
-  const tabs: { kind: SearchKind; icon: IconName; label: () => string }[] = [
+  const tabs: { kind: SearchKind | "lyrics"; icon: IconName; label: () => string }[] = [
     { kind: "all", icon: "grid", label: () => t("search.all") },
     { kind: "songs", icon: "music", label: () => t("search.songs") },
     { kind: "artists", icon: "user", label: () => t("search.artists") },
     { kind: "albums", icon: "disc", label: () => t("search.albums") },
     { kind: "playlists", icon: "list", label: () => t("search.playlists") },
+    { kind: "lyrics", icon: "micVocal", label: () => t("search.lyrics") },
   ];
+
+  function toggleOnly(source: SearchSource) {
+    only = only === source ? null : source;
+  }
 
   // SoundCloud has no albums or artist catalog worth showing; only ask the sources that can answer.
   const sourcesFor = (k: SearchKind): SearchSource[] => (k === "albums" || k === "artists" ? ["youtube"] : SOURCES);
@@ -60,19 +70,50 @@
     }
     if (isLink(q)) {
       results = {};
+      // At once, so the previous link's card or the search tabs don't linger under a new link.
+      link = { state: "loading" };
       timer = window.setTimeout(() => openLink(q, id), DEBOUNCE_MS);
       return;
     }
     link = null;
+    if (k === "lyrics") {
+      results = {};
+      lyricHits = { state: "loading" };
+      timer = window.setTimeout(() => findByLyrics(q, id), DEBOUNCE_MS);
+      return;
+    }
+    lyricHits = null;
     timer = window.setTimeout(() => run(q, k, id), DEBOUNCE_MS);
   });
+
+  async function findByLyrics(q: string, id: number) {
+    try {
+      const hits = await api.lyricsSearch(q);
+      if (id === seq) lyricHits = { state: "done", hits };
+    } catch (e) {
+      if (id === seq) lyricHits = { state: "error", offline: isAppError(e) && (e.code === "offline" || e.code === "network") };
+    }
+  }
+
+  async function playHit(hit: LyricHit) {
+    opening = hit;
+    try {
+      const track = await api.lyricsHitTrack(hit);
+      remember();
+      player.playTracks([track], 0);
+      close();
+    } catch {
+      ui.toast(t("search.lyricsNotFound", { title: hit.title }), "alert");
+    } finally {
+      opening = null;
+    }
+  }
 
   // Links from the services Relay can read (the same ones the Import box takes).
   const LINK = /^(https?:\/\/|spotify:)|^(www\.)?(open\.spotify\.com|spotify\.link|music\.apple\.com|(www\.)?deezer\.com|deezer\.page\.link|(music\.)?youtube\.com|youtu\.be|(m\.)?soundcloud\.com|on\.soundcloud\.com)\//i;
   const isLink = (q: string) => LINK.test(q) && !/\s/.test(q);
 
   async function openLink(url: string, id: number) {
-    link = { state: "loading" };
     try {
       const list = await api.importPreview(url);
       if (id !== seq) return;
@@ -109,15 +150,16 @@
     }
   }
 
-  const done = $derived(SOURCES.map((s) => results[s]).filter((r): r is Extract<Status, { state: "done" }> => r?.state === "done").map((r) => r.data));
+  const shown = $derived(only ? [only] : SOURCES);
+  const done = $derived(shown.map((s) => results[s]).filter((r): r is Extract<Status, { state: "done" }> => r?.state === "done").map((r) => r.data));
   // In "All", each source gets its own share so SoundCloud songs aren't pushed out by YouTube's.
   const perSource = $derived(kind === "all" ? { youtube: 8, soundcloud: 5 } : { youtube: 40, soundcloud: 30 });
   const tracks = $derived(done.flatMap((d) => d.tracks.slice(0, perSource[d.source])));
   const artists = $derived(done.flatMap((d) => d.artists).slice(0, kind === "all" ? 3 : 40));
   const albums = $derived(done.flatMap((d) => d.albums).slice(0, kind === "all" ? 4 : 40));
   const playlists = $derived(done.flatMap((d) => d.playlists).slice(0, kind === "all" ? 4 : 40));
-  const pending = $derived(Object.entries(results).filter(([, r]) => r?.state === "loading").map(([s]) => s as SearchSource));
-  const failed = $derived(Object.entries(results).filter(([, r]) => r?.state === "error").map(([s]) => s as SearchSource));
+  const pending = $derived(shown.filter((s) => results[s]?.state === "loading"));
+  const failed = $derived(shown.filter((s) => results[s]?.state === "error"));
   const nothing = $derived(pending.length === 0 && tracks.length + artists.length + albums.length + playlists.length === 0);
 
   function remember() {
@@ -167,6 +209,15 @@
     <Icon name="search" size={18} />
     <input bind:this={input} bind:value={query} placeholder={t("search.placeholder")} spellcheck="false" onkeydown={(e) => e.key === "Enter" && remember()} />
     {#if query}
+      {#if !link && kind !== "lyrics"}
+        <div class="only" role="group" aria-label={t("search.onlyFrom")}>
+          {#each SOURCES as s (s)}
+            <button class:on={only === s} aria-pressed={only === s} title={t("search.onlySource", { source: sourceLabel(s) })} onclick={() => toggleOnly(s)}>
+              <Icon name={s === "youtube" ? "youtube" : "cloud"} size={15} />
+            </button>
+          {/each}
+        </div>
+      {/if}
       <button class="clear" aria-label={t("search.clearInput")} onclick={() => ((query = ""), input?.focus())}><Icon name="close" size={14} /></button>
     {/if}
   </div>
@@ -221,6 +272,27 @@
           </button>
         {/each}
       </div>
+      {#if kind === "lyrics"}
+        <div class="scroll">
+          {#if lyricHits?.state === "loading"}
+            <div class="status"><Spinner size={16} />{t("search.lyricsLoading")}</div>
+          {:else if lyricHits?.state === "error"}
+            <div class="status"><Icon name="alert" size={16} />{lyricHits.offline ? t("error.offline") : t("search.lyricsFailed")}</div>
+          {:else if lyricHits?.state === "done" && lyricHits.hits.length === 0}
+            <p class="hint">{t("search.lyricsNone")}</p>
+          {:else if lyricHits?.state === "done"}
+            {#each lyricHits.hits as hit (hit.artist + hit.title)}
+              <button class="entity lyric" disabled={!!opening} onclick={() => playHit(hit)}>
+                <span class="mark">{#if opening === hit}<Spinner size={16} />{:else}<Icon name="play" size={14} />{/if}</span>
+                <span class="col">
+                  <span class="name truncate">{hit.title} <span class="by">· {hit.artist}</span></span>
+                  <span class="sub line truncate">“{hit.line}”</span>
+                </span>
+              </button>
+            {/each}
+          {/if}
+        </div>
+      {:else}
       <!-- Any click on a result means the query was useful, so it goes into the history. -->
       <div class="scroll" role="presentation" onclick={remember}>
         {#if artists.length}
@@ -260,6 +332,7 @@
           <p class="hint">{t("search.noResults", { q: query.trim() })}</p>
         {/if}
       </div>
+      {/if}
     {/if}
   </div>
 </div>
@@ -403,6 +476,47 @@
   }
   .history {
     color: var(--text-2);
+  }
+  .only {
+    display: flex;
+    gap: 2px;
+  }
+  .only button {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    transition:
+      background var(--t) var(--ease),
+      color var(--t) var(--ease);
+  }
+  .only button:hover {
+    color: var(--text);
+  }
+  .only button.on {
+    background: rgba(var(--ink), 0.14);
+    color: var(--text);
+  }
+  .lyric .mark {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    border-radius: var(--r-sm);
+    background: rgba(var(--ink), 0.08);
+    color: var(--text-2);
+  }
+  .lyric .by {
+    font-weight: 400;
+    color: var(--text-3);
+  }
+  .lyric .line {
+    font-style: italic;
   }
   .link-card {
     display: flex;

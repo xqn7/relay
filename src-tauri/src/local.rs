@@ -315,6 +315,7 @@ fn read_track(state: &AppState, path: &Path, id: &str, mtime: i64) -> Track {
         is_video: false,
         link: None,
         via: None,
+        listens: None,
     }
 }
 

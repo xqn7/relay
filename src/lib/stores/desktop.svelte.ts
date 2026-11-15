@@ -6,6 +6,7 @@ import { emit, listen } from "@tauri-apps/api/event";
 import { untrack } from "svelte";
 import { api, artistLine, proxiedCover, type DesktopInfo, type UpdateInfo, type VisualQuality } from "../api";
 import { LYRICS_EVENT, NOW_EVENT, READY_EVENT, REMOTE_EVENT, positionNow, type LyricsFeed, type NowFeed, type RemoteAction } from "../desktop/feed";
+import { DEV_BUILD } from "../brand";
 import { i18n, t } from "../i18n/index.svelte";
 import { buildLines } from "../lyrics/lines";
 import { backgrounds } from "./backgrounds.svelte";
@@ -19,6 +20,8 @@ import { visual } from "./visual.svelte";
 
 /** A position report this far off from where the overlays think the song is means a seek. */
 const SEEK_DRIFT_MS = 1500;
+/** The version that last ran on this PC, to notice an update. */
+const SEEN_VERSION_KEY = "relay.seenVersion";
 /** Desktop lyrics with nothing to show for this long close their window. */
 const LYRICS_IDLE_MS = 60_000;
 /** How long frame times are sampled when the fullscreen player opens. */
@@ -44,6 +47,7 @@ class DesktopStore {
       listen<boolean>("game-mode", ({ payload }) => (visual.game = payload === true)),
       listen<UpdateInfo>("update-ready", ({ payload }) => this.offerUpdate(payload)),
       listen<boolean>("lyrics-unlocked", ({ payload }) => (this.lyricsUnlocked = payload === true)),
+      listen("helper-blocked", () => ui.toast(t("helper.blocked"), "alert")),
       listen(READY_EVENT, () => {
         this.sendNow();
         this.sendLyrics();
@@ -51,6 +55,7 @@ class DesktopStore {
       listen<RemoteAction>(REMOTE_EVENT, ({ payload }) => this.remote(payload)),
     ]);
     this.info = await api.desktopInfo().catch(() => null);
+    if (this.info) this.showChangelog(this.info.version);
     visual.game = this.info?.game ?? false;
     this.lyricsUnlocked = this.info?.lyricsUnlocked ?? false;
     api
@@ -153,8 +158,13 @@ class DesktopStore {
   private setLyricsWanted(wanted: boolean): void {
     clearTimeout(this.lyricsIdleTimer);
     if (wanted) {
-      if (!this.lyricsOpen) api.lyricsActive(true).catch((e) => console.error("desktop lyrics failed", e));
+      if (this.lyricsOpen) return;
       this.lyricsOpen = true;
+      // A failed open is tried again with the next song or resume.
+      api.lyricsActive(true).catch((e) => {
+        this.lyricsOpen = false;
+        console.error("desktop lyrics failed", e);
+      });
       return;
     }
     if (!this.lyricsOpen) return;
@@ -169,6 +179,22 @@ class DesktopStore {
   }
 
   // ---- updates -----------------------------------------------------------------------------
+
+  /** After an update (not a first install, not Relay Dev): that release's notes, once. */
+  private showChangelog(version: string): void {
+    let seen: string | null = null;
+    try {
+      seen = localStorage.getItem(SEEN_VERSION_KEY);
+      localStorage.setItem(SEEN_VERSION_KEY, version);
+    } catch {
+      return;
+    }
+    if (DEV_BUILD || !seen || seen === version) return;
+    api
+      .releaseNotes()
+      .then((notes) => notes.trim() && dialogs.open({ kind: "changelog", version, notes }))
+      .catch((e) => console.error("release notes unavailable", e));
+  }
 
   private offerUpdate(info: UpdateInfo): void {
     this.update = info;

@@ -21,14 +21,9 @@
   let version = $state("");
   let appBusy = $state(false);
   let appStatus = $state("");
-  // undefined while yt-dlp is still being asked (it takes a second or two to answer).
-  let ytdlp = $state<string | null | undefined>(undefined);
-  let ytdlpBusy = $state(false);
-  let ytdlpStatus = $state("");
 
   onMount(() => {
     api.desktopInfo().then((i) => (version = i.version)).catch(() => {});
-    api.ytdlpVersion().then((v) => (ytdlp = v)).catch(() => (ytdlp = null));
   });
 
   const failure = (e: unknown) => (isAppError(e) && (e.code === "offline" || e.code === "network" || e.code === "timeout") ? t("error.offline") : t("update.failed"));
@@ -46,19 +41,6 @@
     }
   }
 
-  async function updateYtdlp() {
-    ytdlpBusy = true;
-    ytdlpStatus = "";
-    try {
-      const [v, changed] = await api.ytdlpUpdate();
-      ytdlp = v;
-      ytdlpStatus = changed ? t("update.ytdlpUpdated") : t("update.upToDate");
-    } catch (e) {
-      ytdlpStatus = failure(e);
-    } finally {
-      ytdlpBusy = false;
-    }
-  }
 </script>
 
 <div class="head">
@@ -82,8 +64,12 @@
       <Button variant="secondary" busy={appBusy} onclick={checkApp}>{t("about.check")}</Button>
     </SettingRow>
   {/if}
-  <SettingRow label={t("about.ytdlp")} desc={ytdlpStatus || (ytdlp === null ? t("about.ytdlpMissing") : t("about.ytdlpVersion", { version: ytdlp ?? "…" }))}>
-    <Button variant="secondary" busy={ytdlpBusy} onclick={updateYtdlp}>{t("about.update")}</Button>
+</div>
+
+<h3>{t("about.help")}</h3>
+<div class="card">
+  <SettingRow label={t("problem.title")} desc={t("about.problemDesc")}>
+    <Button variant="secondary" onclick={() => dialogs.open({ kind: "problem" })}>{t("about.problemSend")}</Button>
   </SettingRow>
 </div>
 

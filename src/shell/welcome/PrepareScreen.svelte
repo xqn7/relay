@@ -1,7 +1,7 @@
 <!-- Shown once after the welcome setup: downloads the helpers Relay needs (yt-dlp for YouTube
      playback, ffmpeg for video files, MP3 export and waveforms) with their progress, so no
-     feature has to wait for them later. Closes by itself when both are ready; the downloads
-     keep going if it's sent to the background. -->
+     feature has to wait for them later. Closes by itself when both are ready; it can't be
+     skipped, only left after a download failed (no internet). -->
 <script lang="ts">
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -15,9 +15,22 @@
   let { onDone }: { onDone: () => void } = $props();
 
   const CLOSE_AFTER_READY_MS = 900;
+  /** Set while the helpers aren't all there, so the screen comes back on the next start. */
+  const PENDING_KEY = "relay.helpersPending";
+
+  function remember(pending: boolean) {
+    try {
+      if (pending) localStorage.setItem(PENDING_KEY, "1");
+      else localStorage.removeItem(PENDING_KEY);
+    } catch {
+      // Without storage the screen only shows after the welcome setup.
+    }
+  }
   const NAMES = { "yt-dlp": "prepare.ytdlp", ffmpeg: "prepare.ffmpeg" } as const;
 
   let tools = $state<ToolProgress[]>([]);
+  // Progress that arrived before the first answer, so a "ready" in that gap isn't lost.
+  const early = new Map<string, ToolProgress>();
   const allReady = $derived(tools.length > 0 && tools.every((x) => x.phase === "ready"));
   const anyFailed = $derived(tools.some((x) => x.phase === "failed"));
 
@@ -35,14 +48,29 @@
   function prepare() {
     api
       .toolsPrepare()
-      .then((list) => (tools = list))
-      .catch((e) => console.error("helper downloads failed to start", e));
+      .then((list) => {
+        const first = tools.length === 0;
+        tools = list.map((x) => early.get(x.tool) ?? x);
+        early.clear();
+        // Everything already there (a second account on this PC): nothing to show.
+        if (first && tools.every((x) => x.phase === "ready")) {
+          remember(false);
+          onDone();
+        }
+      })
+      .catch((e) => {
+        console.error("helper downloads failed to start", e);
+        // Nothing to show progress for; the helpers still download when a feature needs them.
+        if (!tools.length) onDone();
+      });
   }
 
   onMount(() => {
+    remember(true);
     prepare();
     const off = listen<ToolProgress>("tool-progress", ({ payload }) => {
-      tools = tools.map((x) => (x.tool === payload.tool ? payload : x));
+      if (tools.length) tools = tools.map((x) => (x.tool === payload.tool ? payload : x));
+      else early.set(payload.tool, payload);
     });
     return () => {
       off.then((f) => f());
@@ -51,11 +79,13 @@
 
   $effect(() => {
     if (!allReady) return;
+    remember(false);
     const id = setTimeout(onDone, CLOSE_AFTER_READY_MS);
     return () => clearTimeout(id);
   });
 </script>
 
+{#if tools.length}
 <div class="prepare" role="dialog" aria-modal="true" aria-label={t("prepare.title")} transition:fade={{ duration: 220 }}>
   <div class="panel glass" in:fly={{ y: 14, duration: 260 }}>
     <div class="mark">
@@ -80,10 +110,17 @@
       {#if anyFailed}
         <Button variant="secondary" icon="refresh" onclick={prepare}>{t("prepare.retry")}</Button>
       {/if}
-      <Button variant={allReady ? "primary" : "ghost"} onclick={onDone}>{allReady ? t("welcome.finish") : t("prepare.background")}</Button>
+      {#if allReady}
+        <Button variant="primary" onclick={onDone}>{t("welcome.finish")}</Button>
+      {:else if anyFailed}
+        <!-- Only without internet (a failed download) can Relay be used before the helpers are
+             there; they download when a feature first needs them. -->
+        <Button variant="ghost" onclick={onDone}>{t("prepare.background")}</Button>
+      {/if}
     </footer>
   </div>
 </div>
+{/if}
 
 <style>
   .prepare {

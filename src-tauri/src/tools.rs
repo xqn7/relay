@@ -15,6 +15,22 @@ use tokio::sync::Mutex;
 
 const YTDLP_BASE: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download";
 const YTDLP_EXE: &str = "yt-dlp.exe";
+/// A yt-dlp update is checked at most this often (on start, and when YouTube playback fails).
+pub const UPDATE_AGAIN: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+/// `yt-dlp --version` answers in about a second; an antivirus scan or a block takes longer.
+const HEALTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Health {
+    Ok,
+    /// Not downloaded (yet): nothing to check.
+    Missing,
+    /// Didn't run, downloaded again, runs now.
+    Repaired,
+    /// Didn't run even after downloading it again: something on the PC stops it.
+    Blocked,
+}
+
 /// Helper names in progress reports.
 pub const YTDLP_TOOL: &str = "yt-dlp";
 pub const FFMPEG_TOOL: &str = "ffmpeg";
@@ -73,6 +89,10 @@ pub struct Tools {
     /// The latest progress of each helper, and who hears about changes (the UI, as an event).
     progress: std::sync::Mutex<Vec<ToolProgress>>,
     reporter: std::sync::OnceLock<Reporter>,
+    /// When a yt-dlp update was last looked for (seconds), 0 = not this run.
+    update_checked: std::sync::atomic::AtomicI64,
+    /// yt-dlp is there but something on the PC stops it from running.
+    blocked: AtomicBool,
 }
 
 /// A download or unpack cut off by closing the app leaves files behind that are never
@@ -263,6 +283,8 @@ impl Tools {
             cookies: std::sync::Mutex::new(None),
             progress: std::sync::Mutex::new(Vec::new()),
             reporter: std::sync::OnceLock::new(),
+            update_checked: std::sync::atomic::AtomicI64::new(0),
+            blocked: AtomicBool::new(false),
         }
     }
 
@@ -437,11 +459,49 @@ impl Tools {
         Ok(())
     }
 
-    /// The installed yt-dlp's version (a date like "2026.10.31"), if it's there.
-    pub async fn ytdlp_version(&self) -> Option<String> {
-        let out = tokio::process::Command::new(self.ytdlp_path()).arg("--version").creation_flags(CREATE_NO_WINDOW).output().await.ok()?;
-        let v = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        (out.status.success() && !v.is_empty() && v.len() < 40).then_some(v)
+    /// Checks for a newer yt-dlp in the background, at most every UPDATE_AGAIN.
+    pub fn update_soon(self: &Arc<Self>) {
+        let now = crate::util::now_secs();
+        let last = self.update_checked.swap(now, Ordering::SeqCst);
+        if now - last < UPDATE_AGAIN.as_secs() as i64 {
+            self.update_checked.store(last, Ordering::SeqCst);
+            return;
+        }
+        let tools = self.clone();
+        tauri::async_runtime::spawn(async move {
+            match tools.update_ytdlp().await {
+                Ok(true) => eprintln!("yt-dlp updated"),
+                Ok(false) => {}
+                Err(e) => eprintln!("yt-dlp update failed: {e}"),
+            }
+        });
+    }
+
+    /// Whether yt-dlp actually runs. An antivirus that blocks it, or a broken download, makes
+    /// it fail or hang; it's downloaded again once, and if that copy fails too it's blocked.
+    pub async fn ytdlp_health(&self) -> Health {
+        if !self.ytdlp_ready() {
+            return Health::Missing;
+        }
+        if self.ytdlp_runs().await {
+            return Health::Ok;
+        }
+        eprintln!("yt-dlp doesn't run; downloading it again");
+        let _guard = self.install_lock.lock().await;
+        let _ = tokio::fs::remove_dir_all(self.ytdlp_dir()).await;
+        let _ = tokio::fs::remove_file(self.dir.join(YTDLP_EXE)).await;
+        if let Err(e) = self.install_ytdlp().await {
+            eprintln!("yt-dlp download failed: {e}");
+            return Health::Missing;
+        }
+        let health = if self.ytdlp_runs().await { Health::Repaired } else { Health::Blocked };
+        self.blocked.store(health == Health::Blocked, Ordering::SeqCst);
+        health
+    }
+
+    async fn ytdlp_runs(&self) -> bool {
+        let run = tokio::process::Command::new(self.ytdlp_path()).arg("--version").creation_flags(CREATE_NO_WINDOW).kill_on_drop(true).output();
+        matches!(tokio::time::timeout(HEALTH_TIMEOUT, run).await, Ok(Ok(out)) if out.status.success())
     }
 
     /// Replaces yt-dlp with the latest release when the published build differs from ours.
@@ -587,6 +647,10 @@ impl Tools {
         if video_id.len() != 11 || !video_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
             return Err(AppError::new("invalid_input", "bad YouTube video id"));
         }
+        // Each try would wait for the block; the song goes straight to its stand-in instead.
+        if self.blocked.load(Ordering::SeqCst) {
+            return Err(AppError::new("helper_blocked", "yt-dlp is blocked on this PC"));
+        }
         let exe = self.ytdlp_path();
         if !exe.exists() {
             // Don't make the song wait for a first-time download; the resolver plays a
@@ -619,7 +683,11 @@ impl Tools {
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
             let last = err.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("failed");
-            return Err(AppError::new(classify_ytdlp_error(&err), format!("yt-dlp: {last}")));
+            let code = classify_ytdlp_error(&err);
+            if code == "source_failed" {
+                self.update_soon();
+            }
+            return Err(AppError::new(code, format!("yt-dlp: {last}")));
         }
         let text = String::from_utf8_lossy(&out.stdout);
         let mut lines = text.lines();
