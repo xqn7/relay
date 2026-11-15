@@ -40,6 +40,7 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
+    "publisher": "xqn7",
     "copyright": "Copyright (C) 2026 xqn7",
     "license": "GPL-3.0-or-later",
     "windows": {
