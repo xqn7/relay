@@ -135,7 +135,7 @@
     position: relative;
     overflow: hidden;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
     cursor: grab;
     touch-action: none;
   }

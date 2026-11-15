@@ -303,3 +303,38 @@ pub fn liked_from_export(json: &str) -> AppResult<LikedSource> {
     }
     Ok(LikedSource::Tracks(tracks))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn code(r: AppResult<LikedSource>) -> String {
+        match r {
+            Err(e) => e.code.to_string(),
+            Ok(_) => "ok".into(),
+        }
+    }
+
+    #[test]
+    fn liked_links_keep_order_and_skip_junk() {
+        let pasted = "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC\nnot a link\nspotify:track:7GhIk7Il098yCjg4BQjzvb\nhttps://open.spotify.com/intl-de/track/4uLU6hMCjMI75M1A2tKUQC?si=x";
+        let Ok(LikedSource::SpotifyIds(ids)) = liked_from_links(pasted) else { panic!("links not read") };
+        assert_eq!(ids, ["4uLU6hMCjMI75M1A2tKUQC", "7GhIk7Il098yCjg4BQjzvb"]);
+    }
+
+    #[test]
+    fn liked_links_without_songs_or_too_many_are_refused() {
+        assert_eq!(code(liked_from_links("hello\nhttps://youtube.com/watch?v=abc")), "no_links");
+        let many: String = (0..=MAX_LIKED_LINKS).map(|i| format!("spotify:track:{i:0>22}\n")).collect();
+        assert_eq!(code(liked_from_links(&many)), "too_many");
+    }
+
+    #[test]
+    fn liked_export_needs_songs() {
+        assert_eq!(code(liked_from_export(r#"{"tracks": []}"#)), "empty_list");
+        assert_eq!(code(liked_from_export("not json")), "bad_file");
+        let file = r#"{"tracks": [{"artist": "a-ha", "album": "Hunting High and Low", "track": "Take on Me", "uri": "spotify:track:2WfaOiMkCvy7F5fcp2zZ8L"}]}"#;
+        let Ok(LikedSource::Tracks(tracks)) = liked_from_export(file) else { panic!("export not read") };
+        assert_eq!(tracks[0].title, "Take on Me");
+    }
+}

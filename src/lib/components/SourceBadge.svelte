@@ -38,11 +38,11 @@
     width: 16px;
     height: 14px;
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(var(--ink), 0.1);
     color: var(--text-2);
   }
   .warn {
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(var(--ink), 0.18);
     color: var(--text);
   }
 </style>

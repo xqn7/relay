@@ -10,7 +10,9 @@
   import { albumPin } from "../lib/pins";
   import { speedDial } from "../lib/stores/speedDial.svelte";
   import { player } from "../lib/stores/player.svelte";
+  import { offline } from "../lib/stores/offline.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+  import { untrack } from "svelte";
   import { fold, matchesQuery } from "../lib/text";
   import { errorText } from "../shell/dialogs/importText";
   import EmptyState from "./EmptyState.svelte";
@@ -36,6 +38,11 @@
     album = null;
     load();
     return () => (ui.heroCover = null);
+  });
+
+  // A page that failed while offline loads by itself once the connection is back.
+  $effect(() => {
+    if (offline.online && untrack(() => error)) load();
   });
 
   const q = $derived(fold(query.trim()));

@@ -148,7 +148,7 @@
     height: 20px;
     padding: 0 8px;
     border-radius: var(--r-full);
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(var(--ink), 0.1);
     font-size: var(--fs-xs);
     font-weight: 600;
     color: var(--text-2);
@@ -166,7 +166,7 @@
     gap: var(--s4);
     padding: 0 var(--s3);
     border-radius: var(--r-lg);
-    background: rgba(20, 20, 22, 0.55);
+    background: rgba(var(--panel), 0.55);
   }
   .seek {
     position: absolute;
@@ -226,7 +226,7 @@
     width: 44px;
     height: 44px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     color: var(--text-3);
   }
   .transport {
@@ -254,7 +254,7 @@
     transition: transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
   .play:hover:not(:disabled) {
-    background: #fff;
+    background: var(--solid);
     transform: scale(1.04);
   }
   .play:active:not(:disabled) {
@@ -283,7 +283,7 @@
     border-radius: var(--r-md);
     border: 1px solid var(--hairline);
     /* Solid, not blurred: a blur nested inside the bar's own blur renders with artifacts. */
-    background: rgb(28, 28, 31);
+    background: rgb(var(--panel));
   }
   .volume-pop::after {
     content: "";

@@ -11,7 +11,8 @@
   import { hasKey, i18n, langName, languages, t, type Lang } from "../lib/i18n/index.svelte";
   import WindowControls from "../shell/WindowControls.svelte";
 
-  let { onSignedIn }: { onSignedIn: (account: Account) => void } = $props();
+  /** `created`: a new account, which gets the welcome setup. */
+  let { onSignedIn }: { onSignedIn: (account: Account, created?: boolean) => void } = $props();
 
   type Mode = "signIn" | "create" | "recovery" | "reset";
   let mode = $state<Mode>("signIn");
@@ -131,7 +132,7 @@
             <code>{created.recoveryKey}</code>
             <Button variant="secondary" icon={copied ? "check" : "copy"} onclick={copyKey}>{copied ? t("auth.copied") : t("auth.copy")}</Button>
           </div>
-          <Button variant="primary" full onclick={() => created && onSignedIn(created.account)}>{t("auth.savedIt")}</Button>
+          <Button variant="primary" full onclick={() => created && onSignedIn(created.account, true)}>{t("auth.savedIt")}</Button>
         </div>
       {:else}
         {#if mode === "reset"}
@@ -199,7 +200,7 @@
     inset: 0;
     width: 100%;
     height: 100%;
-    fill: rgba(255, 255, 255, 0.025);
+    fill: rgba(var(--ink), 0.025);
   }
   .titlebar {
     position: absolute;
@@ -219,7 +220,7 @@
     gap: 36px;
     padding: 10px 36px 10px 10px;
     border-radius: 20px;
-    background: rgba(28, 28, 31, 0.9);
+    background: rgba(var(--panel), 0.9);
     border: 1px solid var(--hairline);
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
   }
@@ -239,7 +240,7 @@
     bottom: -40px;
     width: 360px;
     height: 360px;
-    fill: rgba(255, 255, 255, 0.04);
+    fill: rgba(var(--ink), 0.04);
   }
   .logo {
     position: relative;
@@ -262,12 +263,12 @@
     padding: 0 10px;
     border: 0;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     font-size: var(--fs-sm);
     font-weight: 600;
   }
   .lang-btn:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--ink), 0.12);
   }
   .lang-menu {
     position: absolute;
@@ -277,7 +278,7 @@
     min-width: 150px;
     padding: 4px;
     border-radius: var(--r-md);
-    background: rgba(30, 30, 33, 0.92);
+    background: rgba(var(--panel), 0.92);
   }
   .lang-menu button {
     display: flex;
@@ -343,7 +344,7 @@
     color: var(--text-2);
     text-decoration: underline;
     text-underline-offset: 3px;
-    text-decoration-color: rgba(255, 255, 255, 0.25);
+    text-decoration-color: rgba(var(--ink), 0.25);
   }
   .link:hover {
     color: var(--text);

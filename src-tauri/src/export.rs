@@ -35,7 +35,8 @@ struct ExportProgress {
 }
 
 /// Asks for the target folder, starting where the last export went.
-pub async fn pick_folder(app: &tauri::AppHandle, state: &AppState) -> AppResult<Option<PathBuf>> {
+pub async fn pick_folder(app: &tauri::AppHandle, state: &AppState) -> AppResult<Option<PathBuf>> {
+
     let mut dialog = crate::util::file_dialog(app);
     if let Some(last) = state.db.device_get(FOLDER_KEY)?.map(PathBuf::from).filter(|p| p.is_dir()) {
         dialog = dialog.set_directory(last);
@@ -50,10 +51,10 @@ pub async fn pick_folder(app: &tauri::AppHandle, state: &AppState) -> AppResult<
     Ok(Some(folder))
 }
 
-/// "m:ss" for clip names; dots instead of colons, which file names can't hold.
+/// "1m02s" for clip names: file names can't hold colons, and "1.02" reads like a decimal.
 fn clock(ms: u64) -> String {
     let s = ms / 1000;
-    format!("{}.{:02}", s / 60, s % 60)
+    format!("{}m{:02}s", s / 60, s % 60)
 }
 
 pub fn file_stem(track: &Track, range: Option<(u64, u64)>) -> String {
@@ -184,6 +185,6 @@ mod tests {
     fn names_files_after_the_song() {
         let t = Track::imported("youtube", "x", "Song: Part 1?", vec!["A".into(), "B".into()], Some(1), None, None);
         assert_eq!(file_stem(&t, None), "A, B - Song_ Part 1_");
-        assert_eq!(file_stem(&t, Some((62_300, 92_000))), "A, B - Song_ Part 1_ (clip 1.02-1.32)");
+        assert_eq!(file_stem(&t, Some((62_300, 92_000))), "A, B - Song_ Part 1_ (clip 1m02s-1m32s)");
     }
 }

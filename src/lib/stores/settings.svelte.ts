@@ -22,7 +22,11 @@ export interface DeviceProfile {
   volume: number;
 }
 
+export type Theme = "system" | "light" | "dark";
+export const THEMES: Theme[] = ["system", "light", "dark"];
+
 export const defaults = {
+  theme: "dark" as Theme,
   autoplay: true,
   doubleClick: "play" as "play" | "queue",
   startup: "resume" as "resume" | "empty",
@@ -154,6 +158,7 @@ function valid<K extends SettingKey>(key: K, value: unknown): value is Settings[
   if (key === "background") return value === "cover" || value === "image" || value === "off";
   if (key === "backgroundId") return typeof value === "string" && value.length <= 64;
   if (key === "backgroundWhere") return Array.isArray(value) && value.length <= 4 && value.every((p) => BACKGROUND_PLACES.includes(p));
+  if (key === "theme") return THEMES.includes(value as Theme);
   if (key === "visualQuality") return ["auto", "high", "medium", "low"].includes(value as string);
   if (key === "miniPosition") return MINI_POSITIONS.includes(value as MiniPosition);
   if (key === "miniShortcut") return typeof value === "string" && validShortcut(value);

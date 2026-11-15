@@ -21,7 +21,7 @@
 
   let attached = false;
 
-  async function enter(account: Account) {
+  async function enter(account: Account, created = false) {
     await settings.load().catch(() => settings.reset());
     if (!attached) {
       attached = true;
@@ -41,6 +41,7 @@
     // After the queue's volume is back, so startup keeps it; then each device's own EQ applies.
     sound.attach().catch((e) => console.error("sound setup failed", e));
     api.trashPurgeExpired().catch(() => {});
+    ui.welcome = created;
     session.account = account;
   }
 

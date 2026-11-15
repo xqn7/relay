@@ -123,14 +123,14 @@
     padding: 3px 7px;
     border: 0;
     border-radius: var(--r-sm);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     color: var(--text-2);
     font: inherit;
     font-size: var(--fs-xs);
     transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease);
   }
   .here:hover {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
     color: var(--text);
   }
   .sep {

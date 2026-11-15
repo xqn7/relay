@@ -198,6 +198,6 @@
     transition: background var(--t) var(--ease);
   }
   .root-over {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(var(--ink), 0.04);
   }
 </style>

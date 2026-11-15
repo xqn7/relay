@@ -72,6 +72,7 @@
     position: absolute;
     width: 75vw;
     height: 90vh;
+    opacity: var(--bd-strength);
     will-change: transform;
   }
   .a {
@@ -96,7 +97,7 @@
   .shade {
     position: absolute;
     inset: 0;
-    background: linear-gradient(to bottom, rgba(10, 10, 11, 0) 0%, rgba(10, 10, 11, 0.55) 34%, var(--bg) 62%);
+    background: linear-gradient(to bottom, rgba(var(--bg-rgb), 0) 0%, rgba(var(--bg-rgb), 0.55) 34%, var(--bg) 62%);
   }
   .full .blob {
     height: 150vh;
@@ -105,7 +106,7 @@
     top: 10vh;
   }
   .full .shade {
-    background: linear-gradient(to bottom, rgba(10, 10, 11, 0.18), rgba(10, 10, 11, 0.5) 70%, rgba(10, 10, 11, 0.72));
+    background: linear-gradient(to bottom, rgba(var(--bg-rgb), 0.18), rgba(var(--bg-rgb), 0.5) 70%, rgba(var(--bg-rgb), 0.72));
   }
   @keyframes drift-a {
     to {

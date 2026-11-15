@@ -126,14 +126,14 @@
     transition: outline-color var(--t-fast) var(--ease);
   }
   .thumb.on {
-    outline-color: rgba(255, 255, 255, 0.85);
+    outline-color: rgba(var(--ink), 0.85);
   }
   .pick {
     width: 100%;
     height: 100%;
     padding: 0;
     border: 0;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
   }
   .pick img {
     width: 100%;
@@ -162,7 +162,7 @@
   .add {
     display: grid;
     place-items: center;
-    border: 1px dashed rgba(255, 255, 255, 0.2);
+    border: 1px dashed rgba(var(--ink), 0.2);
     background: transparent;
     color: var(--text-2);
   }

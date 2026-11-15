@@ -70,7 +70,7 @@
     color: var(--on-primary);
   }
   .primary:hover:not(:disabled) {
-    background: #fff;
+    background: var(--solid);
   }
   .secondary {
     background: var(--glass-strong);

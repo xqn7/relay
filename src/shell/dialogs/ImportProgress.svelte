@@ -62,12 +62,12 @@
   .bar {
     height: 4px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(var(--ink), 0.1);
     overflow: hidden;
   }
   .fill {
     height: 100%;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(var(--ink), 0.8);
     transition: width var(--t) var(--ease);
   }
   .hint {

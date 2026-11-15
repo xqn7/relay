@@ -76,7 +76,7 @@
     aspect-ratio: 1;
     overflow: hidden;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     transition: transform var(--t) var(--ease), box-shadow var(--t) var(--ease);
   }
   .art :global(.cover) {
@@ -88,7 +88,7 @@
   }
   .art.over {
     transform: scale(1.04);
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.85);
+    box-shadow: 0 0 0 2px rgba(var(--ink), 0.85);
   }
   .grid {
     display: grid;
@@ -101,8 +101,8 @@
     place-items: center;
     width: 100%;
     height: 100%;
-    color: rgba(255, 255, 255, 0.78);
-    background: rgba(255, 255, 255, 0.07);
+    color: rgba(var(--ink), 0.78);
+    background: rgba(var(--ink), 0.07);
   }
   .title {
     margin-top: 10px;

@@ -6,6 +6,7 @@
   import { visual } from "../../lib/stores/visual.svelte";
   import { artistLine, coverAt, proxiedCover } from "../../lib/api";
   import Backdrop from "../../lib/backdrop/Backdrop.svelte";
+  import Icon from "../../lib/components/Icon.svelte";
   import { i18n, t } from "../../lib/i18n/index.svelte";
   import { activeIndex, buildLines } from "../../lib/lyrics/lines";
   import LyricText from "../../lib/lyrics/LyricText.svelte";
@@ -38,7 +39,7 @@
   });
 </script>
 
-<div class="idle" in:fade={{ duration: 700 }} out:fade={{ duration: 260 }}>
+<div class="idle theme-dark" in:fade={{ duration: 700 }} out:fade={{ duration: 260 }}>
   <Backdrop {cover} place="idle" />
   <div class="clock">
     <div class="time">{time}</div>
@@ -62,7 +63,7 @@
         {#each [track] as tr (tr.id)}
           {@const art = tr.cover ?? player.via?.cover ?? null}
           <div class="art-cell" in:scale={visual.quality === "low" ? { start: 1, duration: 140, opacity: 0 } : { start: 0.94, duration: 520, opacity: 0 }} out:fade={{ duration: visual.quality === "low" ? 100 : 360 }}>
-            {#if art}<img src={proxiedCover(coverAt(art, 400) ?? art)} alt="" />{/if}
+            {#if art}<img src={proxiedCover(coverAt(art, 400) ?? art)} alt="" />{:else}<span class="art-empty"><Icon name="music" size={36} /></span>{/if}
           </div>
         {/each}
       </div>
@@ -125,7 +126,7 @@
     margin: 14px 0 0;
     font-size: clamp(20px, 2.2vw, 30px);
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.32);
+    color: rgba(var(--ink), 0.32);
   }
   .song {
     position: absolute;
@@ -146,8 +147,14 @@
     grid-area: 1 / 1;
     overflow: hidden;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4);
+  }
+  .art-empty {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    color: var(--text-3);
   }
   .art-cell img {
     width: 100%;
@@ -172,13 +179,13 @@
     height: 3px;
     margin-top: 14px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(var(--ink), 0.16);
     overflow: hidden;
   }
   .bar span {
     display: block;
     height: 100%;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--ink), 0.85);
     transition: width 300ms linear;
   }
   .hint {
@@ -189,6 +196,6 @@
     margin: 0;
     text-align: center;
     font-size: var(--fs-xs);
-    color: rgba(255, 255, 255, 0.28);
+    color: rgba(var(--ink), 0.28);
   }
 </style>

@@ -61,7 +61,7 @@
     color: var(--on-primary);
   }
   .icon-btn.primary:hover:not(:disabled) {
-    background: #fff;
+    background: var(--solid);
     color: var(--on-primary);
   }
   .icon-btn:disabled {

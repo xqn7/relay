@@ -248,7 +248,7 @@
   }
   .card {
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
   }
   .overview {
     padding: 16px;
@@ -274,17 +274,17 @@
     margin: 12px 0 10px;
     overflow: hidden;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
   }
   .bar span {
     min-width: 2px;
     transition: width var(--t) var(--ease);
   }
   .mine {
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(var(--ink), 0.9);
   }
   .cache {
-    background: rgba(255, 255, 255, 0.38);
+    background: rgba(var(--ink), 0.38);
   }
   .legend {
     display: flex;

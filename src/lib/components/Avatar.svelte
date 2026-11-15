@@ -23,7 +23,7 @@
     place-items: center;
     overflow: hidden;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
     font-weight: 700;
   }
   img {

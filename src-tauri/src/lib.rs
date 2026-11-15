@@ -54,7 +54,7 @@ use http::Http;
 use media::MediaControls;
 use sources::{soundcloud::SoundCloud, youtube::YouTube};
 use std::collections::HashMap;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use streams::Streams;
@@ -133,6 +133,9 @@ pub(crate) fn request_quit(app: &AppHandle) {
     });
 }
 
+/// Device setting: the main window was maximized when last used.
+const MAXIMIZED_KEY: &str = "window.maximized";
+
 fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
     let data_dir = app.path().app_data_dir()?;
@@ -141,6 +144,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     std::fs::create_dir_all(&local_dir)?;
 
     let in_tray = std::env::args().any(|a| a == desktop::TRAY_ARG);
+    let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
+    let maximized = db.device_get(MAXIMIZED_KEY).ok().flatten().is_some_and(|v| v == "1");
     let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
         .title("Relay")
         .inner_size(1280.0, 800.0)
@@ -157,13 +162,15 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         .on_page_load(move |window, payload| {
             // Started with Windows: stays in the tray (no window, no startup animation).
             if payload.event() == tauri::webview::PageLoadEvent::Finished && !in_tray {
+                if maximized {
+                    let _ = window.maximize();
+                }
                 let _ = window.show();
             }
         })
         .build()?;
     taskbar::attach(&handle, window.hwnd()?);
 
-    let db = Arc::new(Db::open(&data_dir.join("relay.db"))?);
     let http = Arc::new(Http::new());
     let tools = Arc::new(Tools::new(local_dir.join("tools"), http.clone()));
     let state = AppState {
@@ -235,6 +242,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    let was_maximized = AtomicBool::new(maximized);
     window.on_window_event(move |event| {
         // Files dragged in from anywhere go to Local music. The page only shows the reaction;
         // the paths never pass through the webview.
@@ -253,6 +261,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         if let tauri::WindowEvent::Resized(_) = event {
             if let Some(main) = handle.get_webview_window("main") {
                 overlays::main_minimized(&handle, main.is_minimized().unwrap_or(false));
+                // Remembered for the next start; written only when it flips, not per resize step.
+                let now = main.is_maximized().unwrap_or(false);
+                if !main.is_minimized().unwrap_or(false) && was_maximized.swap(now, Ordering::Relaxed) != now {
+                    let _ = state.db.device_set(MAXIMIZED_KEY, if now { "1" } else { "0" });
+                }
             }
         }
         if let tauri::WindowEvent::CloseRequested { api, .. } = event {

@@ -39,7 +39,7 @@
     gap: 2px;
     padding: 3px;
     border-radius: var(--r-md);
-    background: rgba(0, 0, 0, 0.28);
+    background: var(--well);
   }
   .nav button {
     display: grid;

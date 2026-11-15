@@ -39,14 +39,14 @@
     padding: 6px 8px 6px 10px;
     border: 0;
     border-radius: var(--r-sm);
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(var(--ink), 0.07);
     color: var(--text);
     font: inherit;
     font-size: var(--fs-sm);
     transition: background var(--t-fast) var(--ease);
   }
   .picker:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--ink), 0.12);
   }
   .picker :global(svg) {
     flex: none;

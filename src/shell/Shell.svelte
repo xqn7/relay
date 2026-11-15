@@ -7,6 +7,7 @@
   import { t } from "../lib/i18n/index.svelte";
   import { dnd } from "../lib/stores/dnd.svelte";
   import { player } from "../lib/stores/player.svelte";
+  import { settings } from "../lib/stores/settings.svelte";
   import { ui } from "../lib/stores/ui.svelte";
   import AlbumPage from "../pages/AlbumPage.svelte";
   import ArtistPage from "../pages/ArtistPage.svelte";
@@ -61,6 +62,22 @@
       offDrag.then((f) => f());
       offAdd.then((f) => f());
     };
+  });
+
+  // Theme: the sign-in screen is always dark, so the page root only carries a theme while the
+  // app itself is shown. "System" follows Windows' app mode live.
+  const systemLight = window.matchMedia("(prefers-color-scheme: light)");
+  let prefersLight = $state(systemLight.matches);
+  $effect(() => {
+    const update = () => (prefersLight = systemLight.matches);
+    systemLight.addEventListener("change", update);
+    return () => systemLight.removeEventListener("change", update);
+  });
+  $effect(() => {
+    const theme = settings.values.theme;
+    const root = document.documentElement;
+    root.dataset.theme = theme === "light" || (theme === "system" && prefersLight) ? "light" : "dark";
+    return () => delete root.dataset.theme;
   });
 
   // Lyrics follow the current song (and load once the connection is back).
@@ -151,6 +168,9 @@
 <Menu />
 <DialogHost />
 <IdleScreen />
+{#if ui.welcome}
+  {#await import("./welcome/WelcomeSetup.svelte") then m}<m.default onDone={() => (ui.welcome = false)} />{/await}
+{/if}
 {#if dnd.payload}
   <div class="ghost glass" style:left="{dnd.x + 14}px" style:top="{dnd.y + 10}px">{dnd.payload.label}</div>
 {/if}
@@ -177,7 +197,7 @@
     white-space: nowrap;
     text-overflow: ellipsis;
     border-radius: var(--r-full);
-    background: rgba(24, 24, 27, 0.8);
+    background: rgba(var(--panel), 0.8);
     font-size: var(--fs-sm);
     font-weight: 600;
     pointer-events: none;

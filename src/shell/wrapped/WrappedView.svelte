@@ -86,7 +86,7 @@
 
 <svelte:window onkeydown={onKey} onresize={fitScale} />
 
-<div class="wrapped" role="dialog" aria-modal="true" aria-label={t("wrapped.title")} transition:fade={{ duration: 180 }}>
+<div class="wrapped theme-dark" role="dialog" aria-modal="true" aria-label={t("wrapped.title")} transition:fade={{ duration: 180 }}>
   <header>
     <span class="label">{t("wrapped.title")} · {period.label}</span>
     <IconButton icon="close" label={t("win.close")} onclick={() => (ui.wrapped = null)} />
@@ -264,7 +264,7 @@
     margin-top: 12px;
     font-size: 22px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(var(--ink), 0.8);
   }
   ol {
     display: grid;
@@ -330,7 +330,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(var(--ink), 0.25);
     transition: background var(--t) var(--ease);
   }
   .dots span.on {

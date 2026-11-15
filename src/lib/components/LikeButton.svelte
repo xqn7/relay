@@ -104,7 +104,7 @@
     height: 3px;
     margin: -1.5px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--solid);
     opacity: 0;
     animation: burst 360ms var(--ease) forwards;
   }

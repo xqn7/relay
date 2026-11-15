@@ -139,7 +139,7 @@
     display: flex;
     flex-direction: column;
     border-radius: var(--r-lg);
-    background: rgba(18, 18, 20, 0.7);
+    background: rgba(var(--panel), 0.7);
   }
   header {
     display: flex;
@@ -193,7 +193,7 @@
   }
   .lifted {
     z-index: 2;
-    background: rgba(40, 40, 44, 0.95) !important;
+    background: linear-gradient(var(--glass-raised), var(--glass-raised)), rgba(var(--panel), 0.95) !important;
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
   }
   .dragging .item:not(.lifted) {

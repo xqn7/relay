@@ -33,12 +33,12 @@
 
 <style>
   .w {
-    --off: rgba(255, 255, 255, 0.42);
+    --off: rgba(var(--ink), 0.42);
     color: var(--off);
   }
   /* Each word fills with white from left to right as it's sung. */
   .karaoke {
-    background: linear-gradient(90deg, #fff var(--p), var(--off) var(--p));
+    background: linear-gradient(90deg, var(--solid) var(--p), var(--off) var(--p));
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -54,10 +54,10 @@
   .glow.now,
   .bounce.done,
   .bounce.now {
-    color: #fff;
+    color: var(--solid);
   }
   .glow.now {
-    text-shadow: 0 0 0.5em rgba(255, 255, 255, 0.5);
+    text-shadow: 0 0 0.5em rgba(var(--ink), 0.5);
   }
   .bounce {
     display: inline-block;
@@ -68,7 +68,7 @@
   mark {
     padding: 0 2px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--ink), 0.85);
     color: var(--on-primary);
   }
   .note {

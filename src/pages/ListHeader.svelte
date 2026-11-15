@@ -80,8 +80,8 @@
     width: 168px;
     height: 168px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.08);
-    color: rgba(255, 255, 255, 0.82);
+    background: rgba(var(--ink), 0.08);
+    color: rgba(var(--ink), 0.82);
   }
   .info {
     flex: 1;

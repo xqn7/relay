@@ -153,7 +153,7 @@
     width: 24px;
     height: 24px;
     border-radius: 50%;
-    border: 2px solid #18181b;
+    border: 2px solid rgb(var(--panel));
   }
   .lines {
     display: grid;
@@ -182,7 +182,7 @@
     flex: 1;
     height: 4px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--ink), 0.12);
     overflow: hidden;
   }
   .fill {
@@ -192,7 +192,7 @@
   .btn {
     padding: 7px;
     border-radius: var(--r-sm);
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     text-align: center;
     font-size: var(--fs-xs);
     font-weight: 600;

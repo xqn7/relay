@@ -197,7 +197,7 @@
     position: fixed;
     inset: 0;
     z-index: 60;
-    background: rgba(5, 5, 6, 0.35);
+    background: rgba(var(--scrim), 0.35);
     backdrop-filter: blur(10px);
   }
   .popup {
@@ -218,7 +218,7 @@
     height: 52px;
     padding: 0 16px;
     border-radius: var(--r-lg);
-    background: rgba(24, 24, 27, 0.82);
+    background: rgba(var(--panel), 0.82);
     color: var(--text-2);
   }
   .box input {
@@ -239,7 +239,7 @@
     height: 22px;
     border: 0;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
     color: var(--text);
   }
   .results {
@@ -248,7 +248,7 @@
     flex-direction: column;
     padding: 10px;
     border-radius: var(--r-lg);
-    background: rgba(24, 24, 27, 0.82);
+    background: rgba(var(--panel), 0.82);
   }
   .scroll {
     overflow-y: auto;

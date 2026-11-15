@@ -54,6 +54,8 @@ class UiStore {
   direction = $state<1 | -1>(1);
   searchOpen = $state(false);
   settingsOpen = $state(false);
+  /** The welcome setup after creating an account. */
+  welcome = $state(false);
   queueOpen = $state(false);
   fullscreenOpen = $state(false);
   /** Files are being dragged over the window from outside. */

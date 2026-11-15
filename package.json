@@ -5,6 +5,8 @@
   "type": "module",
   "license": "GPL-3.0-or-later",
   "scripts": {
+    "start": "tauri dev",
+    "app": "tauri build",
     "dev": "vite",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",

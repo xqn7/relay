@@ -16,7 +16,7 @@ use tauri::Emitter;
 
 const LATEST_URL: &str = "https://github.com/xqn7/relay/releases/latest/download/latest.json";
 /// The release signing key's public half (the private half never leaves the release PC).
-const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM4MTZDREM3QjE1RjI3RjEKUldUeEoxK3h4ODBXeUtjdnc1OWx4QWZVRUxIQTFQTVdpalhFaEg1enlPcUMxT01WcktxbmQ2eUUK";
+const PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEZBMkMyRTdCNjQ1NjIwNTEKUldSUklGWmtleTRzK2kvNFQ5R2dOV0lhcXhUS1V0ZGVJOUFtVDUrWW5qOE01bmYxNmY5MVNsUUgK";
 const PLATFORM: &str = "windows-x86_64";
 const MAX_INSTALLER_BYTES: u64 = 200 * 1024 * 1024;
 /// The startup check waits a little, so it never competes with the app's own start.
@@ -103,11 +103,20 @@ pub fn verify(data: &[u8], signature_b64: &str, version: &str, public_key_b64: &
     let key = PublicKey::decode(&base64_text(public_key_b64).ok_or_else(|| bad("key unreadable"))?).map_err(|_| bad("key unreadable"))?;
     let sig = Signature::decode(&base64_text(signature_b64).ok_or_else(|| bad("signature unreadable"))?).map_err(|_| bad("signature unreadable"))?;
     key.verify(data, &sig, true).map_err(|_| bad("signature doesn't match"))?;
-    let signed = sig.trusted_comment().split('\t').find_map(|f| f.strip_prefix("version:")).map(|v| v.trim_start_matches('v'));
-    if signed != Some(version) {
+    if signed_version(sig.trusted_comment()) != Some(version) {
         return Err(bad("was signed for another version"));
     }
     Ok(())
+}
+
+/// The version a signature was made for. `tauri signer sign` records the signed file's name
+/// ("file:Relay_1.2.3_x64-setup.exe") in the trusted comment; a "version:" field wins if present.
+fn signed_version(comment: &str) -> Option<&str> {
+    let fields = || comment.split('\t');
+    if let Some(v) = fields().find_map(|f| f.strip_prefix("version:")) {
+        return Some(v.trim_start_matches('v'));
+    }
+    fields().find_map(|f| f.strip_prefix("file:")?.strip_prefix("Relay_")?.strip_suffix("_x64-setup.exe"))
 }
 
 fn update_dir(state: &AppState) -> PathBuf {
@@ -224,7 +233,7 @@ mod tests {
     }
 
     /// `tauri signer sign` with Relay's key over "relay-update-test" (no version in its comment).
-    const FIXTURE_SIG: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUeEoxK3h4ODBXeUdIRk5vYjl5YSthWmc0cXp3bjdHN3VTd05EakpieERXT3c4NlVCYUtJWm4rekp6VkFsK2l0VE0wejFmZVE5Mi9BbXEyZGtNM0RycE1yZVp6YmljN1FzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NDA5NTMyCWZpbGU6Zml4dHVyZS5iaW4KSzBoNk1mRUxhbkwvcFVpb0RoNGFCdnZBaHZvQkdvRkFZT0VhTWNmbEoyUTgyamwwT25xVjVIVUVvZE1FTi9JRytpRkJHTFRWU0N0WldNUU9rdkgxQWc9PQo=";
+    const FIXTURE_SIG: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUklGWmtleTRzK3V3VzdHbk9ieDJqaitNSHFTeDQ4RFNHdHNzOEZvU0lJVy8zVmhKZUx3c2hsVG5vVWo3RFVpc0k2ZkFFZmFPUWwzSXpzYmZDc2pHZkYwN1ltd1F5Wnc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NzQyMDU3CWZpbGU6Zml4dHVyZS5iaW4KRlVad1ozM0tkZ05GYWN4Y1h1V2FoUzJCZXRSSCtmNk0rSi9mT3hreGZhTnA5a2pFL1BPcTB6K29DeERYazJLSDFPLzJyd1hSaEVxSm9IMDZ6c3I1RHc9PQo=";
 
     #[test]
     fn checks_signature_then_signed_version() {
@@ -233,5 +242,16 @@ mod tests {
         assert_eq!(detail(verify(b"relay-update-tampered", FIXTURE_SIG, "0.2.0", PUBLIC_KEY)), "update signature doesn't match");
         // A genuine signature, but not one made for the announced version.
         assert_eq!(detail(verify(b"relay-update-test", FIXTURE_SIG, "0.2.0", PUBLIC_KEY)), "update was signed for another version");
+    }
+
+    /// The same bytes signed as "Relay_0.2.0_x64-setup.exe", the way scripts/release.ps1 signs.
+    const INSTALLER_SIG: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVSUklGWmtleTRzK285Vno4TUtpbnh5VlFPM2ZSUEhnMGY3L0FVS0xlb3F6c2t3Zml2bDJXSjBEWjliTy9pOXg0T1hEMkxSa0FMQlZnWXVLampFU1JoQVZmMnI5aHVKWUFjPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzk0NzQyNzc1CWZpbGU6UmVsYXlfMC4yLjBfeDY0LXNldHVwLmV4ZQpJSERGZXNpMGd4RHN4c3FVNVpiQ29PQkRsZFhnRW16ZXhIK3hKWTExRm1zUkVEc2pDeldzS3FTNUMwSkt4VmE0TDB3SWVZQURwdkV3SGo1WVpjbk1EUT09Cg==";
+
+    #[test]
+    fn accepts_installer_signed_for_its_version() {
+        assert!(verify(b"relay-update-test", INSTALLER_SIG, "0.2.0", PUBLIC_KEY).is_ok());
+        assert_eq!(verify(b"relay-update-test", INSTALLER_SIG, "0.3.0", PUBLIC_KEY).unwrap_err().detail, "update was signed for another version");
+        assert_eq!(signed_version("timestamp:1\tversion:v1.0.0"), Some("1.0.0"));
+        assert_eq!(signed_version("timestamp:1\tfile:other.exe"), None);
     }
 }

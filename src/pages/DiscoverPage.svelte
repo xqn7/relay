@@ -127,7 +127,7 @@
     gap: var(--s4);
     padding: var(--s3);
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(var(--ink), 0.04);
   }
   .who {
     display: grid;

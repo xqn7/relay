@@ -47,7 +47,7 @@
     padding: 10px 16px;
     overflow: hidden;
     border-radius: var(--r-md);
-    background: rgba(24, 24, 27, 0.72);
+    background: rgba(var(--panel), 0.72);
     font-size: var(--fs-sm);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   }
@@ -63,7 +63,7 @@
     pointer-events: auto;
   }
   .action:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(var(--ink), 0.2);
   }
   .toast :global(svg) {
     color: var(--text-2);
@@ -74,11 +74,11 @@
     right: 0;
     bottom: 0;
     height: 2px;
-    background: rgba(255, 255, 255, 0.1);
+    background: rgba(var(--ink), 0.1);
   }
   .fill {
     height: 100%;
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(var(--ink), 0.7);
     transition: width var(--t) var(--ease);
   }
 </style>

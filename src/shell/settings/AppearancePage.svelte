@@ -1,5 +1,5 @@
-<!-- Settings → Appearance: the background, how lyrics look and translate, the up-next card and
-     the idle screen. Language, theme and visual quality join this page in later phases. -->
+<!-- Settings → Appearance: language and theme, visual quality, the background, how lyrics look
+     and translate, desktop extras, the up-next card and the idle screen. -->
 <script lang="ts">
   import { api, isAppError } from "../../lib/api";
   import Button from "../../lib/components/Button.svelte";
@@ -9,7 +9,8 @@
   import type { Key } from "../../lib/i18n/en";
   import { t } from "../../lib/i18n/index.svelte";
   import { lyrics } from "../../lib/stores/lyrics.svelte";
-  import { IDLE_MINUTES, LYRICS_STYLES, settings } from "../../lib/stores/settings.svelte";
+  import { i18n, langName, languages } from "../../lib/i18n/index.svelte";
+  import { IDLE_MINUTES, LYRICS_STYLES, THEMES, settings } from "../../lib/stores/settings.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
   import { desktop } from "../../lib/stores/desktop.svelte";
   import { dialogs } from "../../lib/stores/dialogs.svelte";
@@ -51,6 +52,32 @@
     if (v.translateLyrics) lyrics.translate();
   }
 </script>
+
+{#if visible("settings.language", "settings.languageDesc") || visible("settings.theme", "settings.themeDesc")}
+  <h3>{t("settings.section.look")}</h3>
+  <div class="card">
+    {#if visible("settings.language", "settings.languageDesc")}
+      <SettingRow label={t("settings.language")} desc={t("settings.languageDesc")}>
+        <Segmented label={t("settings.language")} value={i18n.lang} options={languages.map((l) => ({ value: l, label: langName(l) }))} onchange={(l) => (i18n.lang = l)} />
+      </SettingRow>
+    {/if}
+    {#if visible("settings.theme", "settings.themeDesc")}
+      <SettingRow label={t("settings.theme")} desc={t("settings.themeDesc")} />
+      <div class="themes" role="radiogroup" aria-label={t("settings.theme")}>
+        {#each THEMES as theme (theme)}
+          <button class="theme" role="radio" aria-checked={v.theme === theme} class:on={v.theme === theme} onclick={() => settings.set("theme", theme)}>
+            <span class="preview {theme}" aria-hidden="true">
+              <span class="side"></span>
+              <span class="lines"><i></i><i></i><i></i></span>
+              <span class="bar"></span>
+            </span>
+            {t(`settings.theme.${theme}`)}
+          </button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+{/if}
 
 {#if visible("quality.title", "quality.desc")}
   <h3>{t("quality.title")}</h3>
@@ -221,7 +248,99 @@
   }
   .card {
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
+  }
+  .themes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding: 0 16px 16px;
+  }
+  .theme {
+    display: grid;
+    gap: 8px;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: var(--fs-sm);
+    font-weight: 600;
+    color: var(--text-2);
+    text-align: left;
+  }
+  .theme.on,
+  .theme:hover {
+    color: var(--text);
+  }
+  /* A tiny Relay window in the theme's own colors (fixed, not tokens: the previews show both
+     themes whichever one is active). */
+  .preview {
+    position: relative;
+    display: block;
+    height: 76px;
+    overflow: hidden;
+    border-radius: var(--r-md);
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    background: #0a0a0b;
+    transition: outline-color var(--t-fast) var(--ease);
+    --p-ink: 255, 255, 255;
+  }
+  .preview.light {
+    background: #f4f4f5;
+    --p-ink: 14, 14, 16;
+  }
+  /* System: the left half dark, the right half light. */
+  .preview.system {
+    background: linear-gradient(105deg, #0a0a0b 50%, #f4f4f5 50%);
+  }
+  .theme.on .preview {
+    outline-color: var(--solid);
+  }
+  .theme:hover:not(.on) .preview {
+    outline-color: var(--hairline);
+  }
+  .side {
+    position: absolute;
+    left: 6px;
+    top: 6px;
+    bottom: 6px;
+    width: 10px;
+    border-radius: 4px;
+    background: rgba(var(--p-ink), 0.12);
+  }
+  .lines {
+    position: absolute;
+    left: 24px;
+    top: 10px;
+    display: grid;
+    gap: 5px;
+  }
+  .lines i {
+    display: block;
+    width: 52px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(var(--p-ink), 0.5);
+  }
+  .lines i + i {
+    width: 38px;
+    background: rgba(var(--p-ink), 0.2);
+  }
+  .bar {
+    position: absolute;
+    left: 24px;
+    right: 8px;
+    bottom: 7px;
+    height: 12px;
+    border-radius: 4px;
+    background: rgba(var(--p-ink), 0.1);
+  }
+  .system .side,
+  .system .lines i {
+    background: rgba(255, 255, 255, 0.4);
+  }
+  .system .bar {
+    background: linear-gradient(105deg, rgba(255, 255, 255, 0.14) 38%, rgba(14, 14, 16, 0.12) 38%);
   }
   .key-row {
     display: flex;
@@ -240,7 +359,7 @@
     margin-right: 6px;
     padding: 1px 7px;
     border-radius: var(--r-full);
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--ink), 0.12);
     color: var(--text);
     font-weight: 600;
   }

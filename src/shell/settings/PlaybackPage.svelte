@@ -158,14 +158,14 @@
   }
   .card {
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
   }
   .block {
     padding: 14px 16px;
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(var(--ink), 0.04);
   }
   .block + :global(.row) {
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    border-top: 1px solid rgba(var(--ink), 0.04);
   }
   .note {
     margin: 10px 0 0;

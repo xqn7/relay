@@ -91,13 +91,13 @@
     width: 100%;
     height: 4px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(var(--ink), 0.16);
     overflow: hidden;
     transition: height var(--t-fast) var(--ease);
   }
   .fill {
     height: 100%;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(var(--ink), 0.9);
   }
   .thumb {
     position: absolute;
@@ -105,7 +105,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--solid);
     transform: translate(-50%, -50%) scale(0);
     transition: transform var(--t-fast) var(--ease);
   }

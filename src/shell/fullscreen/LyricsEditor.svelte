@@ -250,7 +250,7 @@
     line-height: 1.6;
   }
   textarea:focus {
-    border-color: rgba(255, 255, 255, 0.24);
+    border-color: rgba(var(--ink), 0.24);
   }
   .rows {
     flex: 1;

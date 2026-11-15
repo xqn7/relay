@@ -18,6 +18,7 @@
   import MiniPlayerPage from "./MiniPlayerPage.svelte";
   import StartupPage from "./StartupPage.svelte";
   import YouTubePage from "./YouTubePage.svelte";
+  import DocsPage from "./DocsPage.svelte";
 
   let { onSignOut }: { onSignOut: () => void } = $props();
 
@@ -33,6 +34,13 @@
   const current = $derived(pages.find((p) => p.id === page)!);
   // When searching, rows are filtered too, unless the page name itself matched.
   const visible = $derived((l: Key, d: Key) => !q || hit(current.label) || rowVisible(l, d));
+
+  // Each page opens at its top, not at the previous page's scroll position.
+  let content = $state<HTMLElement>();
+  $effect(() => {
+    void page;
+    content?.scrollTo({ top: 0 });
+  });
 
   $effect(() => {
     if (q && shown.length && !shown.some((p) => p.id === page)) page = shown[0].id;
@@ -89,10 +97,11 @@
         <h2>{t(current.label)}</h2>
         {#if current.id === "playback"}<p>{t("settings.sub.playback")}</p>{/if}
         {#if current.id === "appearance"}<p>{t("settings.sub.appearance")}</p>{/if}
+        {#if current.id === "docs"}<p>{t("settings.sub.docs")}</p>{/if}
       </div>
       <IconButton icon="close" label={t("settings.close")} onclick={() => (ui.settingsOpen = false)} />
     </header>
-    <div class="content">
+    <div class="content" bind:this={content}>
       {#if current.id === "playback"}
         <PlaybackPage {visible} />
       {:else if current.id === "appearance"}
@@ -109,11 +118,8 @@
         <StartupPage {visible} />
       {:else if current.id === "about"}
         <AboutPage />
-      {:else}
-        <div class="soon">
-          <Icon name={current.icon} size={28} />
-          <p>{t("page.soon")}</p>
-        </div>
+      {:else if current.id === "docs"}
+        <DocsPage onPage={(p) => ((query = ""), (page = p))} />
       {/if}
     </div>
   </section>
@@ -124,7 +130,7 @@
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(5, 5, 6, 0.4);
+    background: rgba(var(--scrim), 0.4);
     backdrop-filter: blur(14px);
   }
   .window {
@@ -139,7 +145,7 @@
     grid-template-columns: 240px 1fr;
     overflow: hidden;
     border-radius: 16px;
-    background: rgba(14, 14, 16, 0.78);
+    background: rgba(var(--panel), 0.8);
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
   }
   aside {
@@ -147,7 +153,7 @@
     flex-direction: column;
     min-height: 0;
     padding: 12px 10px;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--well);
   }
   .search {
     display: flex;
@@ -156,7 +162,7 @@
     height: 36px;
     padding: 0 12px;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(var(--ink), 0.07);
     color: var(--text-3);
   }
   .search input {
@@ -216,7 +222,7 @@
     gap: 10px;
     padding: 10px;
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
   }
   .who {
     flex: 1;
@@ -270,7 +276,8 @@
   .content {
     flex: 1;
     overflow-y: auto;
-    padding: 10px 24px 24px;
+    /* Room below the last row, so a toast (like Undo) never hides it for good. */
+    padding: 10px 24px 72px;
   }
   /* Section headings and cards shared by the settings pages. */
   .content :global(h3) {
@@ -283,7 +290,7 @@
   }
   .content :global(.card) {
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
   }
   .content :global(.note) {
     margin: 0;
@@ -291,16 +298,5 @@
     font-size: var(--fs-xs);
     line-height: 1.5;
     color: var(--text-3);
-  }
-  .soon {
-    display: grid;
-    justify-items: center;
-    gap: 10px;
-    margin-top: 120px;
-    color: var(--text-3);
-  }
-  .soon p {
-    margin: 0;
-    font-size: var(--fs-sm);
   }
 </style>

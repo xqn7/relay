@@ -154,13 +154,13 @@
     padding: 0;
     border: 0;
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
     color: var(--text-3);
     font-size: var(--fs-sm);
     font-weight: 600;
   }
   .banner.empty:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     color: var(--text-2);
   }
   .banner img {
@@ -222,7 +222,7 @@
     gap: 2px;
     padding: var(--s4);
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
   }
   .stats b {
     font-size: var(--fs-2xl);
@@ -249,7 +249,7 @@
     gap: var(--s4);
     padding: var(--s4) var(--s5);
     border-radius: var(--r-lg);
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(var(--ink), 0.05);
   }
   .wrapped h2 {
     margin: 0;

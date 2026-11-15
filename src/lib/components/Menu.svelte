@@ -75,11 +75,11 @@
     z-index: 91;
     min-width: 200px;
     max-width: 300px;
-    max-height: min(520px, calc(100vh - 16px));
+    max-height: calc(100vh - 16px);
     overflow-y: auto;
     padding: 5px;
     border-radius: var(--r-md);
-    background: rgba(24, 24, 27, 0.78);
+    background: rgba(var(--panel), 0.78);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
   }
   button {
@@ -87,7 +87,7 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    height: 34px;
+    height: 32px;
     padding: 0 10px;
     border: 0;
     border-radius: var(--r-sm);

@@ -135,14 +135,14 @@
     padding: 5px 8px 5px 10px;
     border: 0;
     border-radius: var(--r-sm);
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(var(--ink), 0.07);
     color: var(--text);
     font: inherit;
     font-size: var(--fs-sm);
     transition: background var(--t-fast) var(--ease);
   }
   .preset:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: rgba(var(--ink), 0.12);
   }
   .bands {
     display: grid;
@@ -184,7 +184,7 @@
     width: 3px;
     transform: translateX(-50%);
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
   }
   /* From the 0 dB middle to the value, so boosts and cuts read at a glance. */
   .fill {
@@ -193,7 +193,7 @@
     width: 3px;
     transform: translateX(-50%);
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--ink), 0.85);
   }
   .knob {
     position: absolute;
@@ -202,7 +202,7 @@
     height: 12px;
     transform: translate(-50%, 50%);
     border-radius: 50%;
-    background: #fff;
+    background: var(--solid);
     transition: transform var(--t-fast) var(--ease);
   }
   .rail:hover .knob,

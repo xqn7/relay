@@ -4,10 +4,18 @@
   import { api, isAppError } from "../../lib/api";
   import logo from "../../lib/assets/logo.svg";
   import Button from "../../lib/components/Button.svelte";
+  import Icon from "../../lib/components/Icon.svelte";
   import { t } from "../../lib/i18n/index.svelte";
   import { desktop } from "../../lib/stores/desktop.svelte";
   import { dialogs } from "../../lib/stores/dialogs.svelte";
   import SettingRow from "./SettingRow.svelte";
+
+  const REPO = "https://github.com/xqn7/relay";
+  const links = [
+    { label: "about.repo", desc: "about.repoDesc", url: REPO },
+    { label: "about.issues", desc: "about.issuesDesc", url: `${REPO}/issues` },
+    { label: "about.releases", desc: "about.releasesDesc", url: `${REPO}/releases` },
+  ] as const;
 
   let version = $state("");
   let appBusy = $state(false);
@@ -53,7 +61,7 @@
 </script>
 
 <div class="head">
-  <img src={logo} alt="" width="56" height="56" />
+  <img class="logo-mark" src={logo} alt="" width="56" height="56" />
   <div>
     <h3>Relay</h3>
     {#if version}<p>{t("about.version", { version })}</p>{/if}
@@ -76,7 +84,66 @@
   </SettingRow>
 </div>
 
+<h3>{t("about.links")}</h3>
+<div class="card">
+  {#each links as link (link.url)}
+    <button class="link" onclick={() => api.openExternal(link.url)}>
+      <span class="names">
+        <span class="label">{t(link.label)}</span>
+        <span class="desc">{t(link.desc)}</span>
+      </span>
+      <Icon name="external" size={16} />
+    </button>
+  {/each}
+</div>
+
+<p class="legal">{t("about.license")}</p>
+
 <style>
+  .link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s4);
+    width: 100%;
+    padding: 12px 16px;
+    border: 0;
+    background: none;
+    text-align: left;
+    color: var(--text-3);
+  }
+  .link:first-child {
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+  }
+  .link:last-child {
+    border-radius: 0 0 var(--r-lg) var(--r-lg);
+  }
+  .link + .link {
+    border-top: 1px solid rgba(var(--ink), 0.04);
+  }
+  .link:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .names {
+    display: grid;
+    gap: 3px;
+  }
+  .label {
+    font-size: var(--fs-md);
+    font-weight: 600;
+    color: var(--text);
+  }
+  .desc {
+    font-size: var(--fs-sm);
+    color: var(--text-2);
+  }
+  .legal {
+    margin: 18px 2px 0;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text-3);
+  }
   .head {
     display: flex;
     align-items: center;

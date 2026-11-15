@@ -326,8 +326,8 @@
     transition: background var(--t) var(--ease), box-shadow var(--t) var(--ease);
   }
   .drop-ready {
-    background: rgba(255, 255, 255, 0.04);
-    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.5);
+    background: rgba(var(--ink), 0.04);
+    box-shadow: inset 0 0 0 2px rgba(var(--ink), 0.5);
   }
   .none {
     padding: 40px 0;

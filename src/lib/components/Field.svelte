@@ -72,10 +72,10 @@
     color: var(--text-3);
   }
   input:focus {
-    border-color: rgba(255, 255, 255, 0.28);
+    border-color: rgba(var(--ink), 0.28);
   }
   .invalid input {
-    border-color: rgba(255, 255, 255, 0.5);
+    border-color: rgba(var(--ink), 0.5);
   }
   .box:has(.eye) input {
     padding-right: 40px;

@@ -142,17 +142,17 @@
     display: block;
   }
   .rest {
-    fill: rgba(255, 255, 255, 0.24);
+    fill: rgba(var(--ink), 0.24);
   }
   .played {
-    fill: rgba(255, 255, 255, 0.92);
+    fill: rgba(var(--ink), 0.92);
   }
   .rail {
     position: relative;
     width: 100%;
     height: 3px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(var(--ink), 0.16);
     overflow: hidden;
     transition: height var(--t-fast) var(--ease);
   }
@@ -165,7 +165,7 @@
   }
   .fill {
     height: 100%;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(var(--ink), 0.9);
   }
   .thumb {
     position: absolute;
@@ -173,7 +173,7 @@
     width: 12px;
     height: 12px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--solid);
     transform: translate(-50%, -50%) scale(0);
     transition: transform var(--t-fast) var(--ease);
     pointer-events: none;
@@ -189,7 +189,7 @@
     top: 50%;
     height: 5px;
     transform: translateY(-50%);
-    background: rgba(12, 12, 14, 0.7);
+    background: rgba(var(--bg-rgb), 0.7);
     pointer-events: none;
   }
   .wave .cut {
@@ -203,13 +203,13 @@
     height: max(14px, 70%);
     transform: translateY(-50%);
     border-radius: 3px;
-    background: rgba(255, 255, 255, 0.1);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    background: rgba(var(--ink), 0.1);
+    box-shadow: inset 0 0 0 1px rgba(var(--ink), 0.18);
     pointer-events: none;
     transition: background var(--t-fast) var(--ease);
   }
   .range.looping {
-    background: rgba(255, 255, 255, 0.18);
+    background: rgba(var(--ink), 0.18);
   }
   .marker {
     position: absolute;
@@ -229,7 +229,7 @@
     bottom: 0;
     width: 2px;
     border-radius: 1px;
-    background: #fff;
+    background: var(--solid);
   }
   .marker span {
     position: absolute;

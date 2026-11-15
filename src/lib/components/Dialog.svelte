@@ -42,7 +42,7 @@
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(5, 5, 6, 0.4);
+    background: rgba(var(--scrim), 0.4);
     backdrop-filter: blur(8px);
   }
   .dialog {
@@ -56,7 +56,7 @@
     flex-direction: column;
     translate: -50% -50%;
     border-radius: var(--r-lg);
-    background: rgba(22, 22, 25, 0.82);
+    background: rgba(var(--panel), 0.82);
     box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
   }
   header {

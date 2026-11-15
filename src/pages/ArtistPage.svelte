@@ -11,7 +11,9 @@
   import { library } from "../lib/stores/library.svelte";
   import { speedDial } from "../lib/stores/speedDial.svelte";
   import { player } from "../lib/stores/player.svelte";
+  import { offline } from "../lib/stores/offline.svelte";
   import { ui } from "../lib/stores/ui.svelte";
+  import { untrack } from "svelte";
   import { errorText } from "../shell/dialogs/importText";
   import EmptyState from "./EmptyState.svelte";
 
@@ -37,6 +39,11 @@
     allTop = aboutOpen = false;
     load();
     return () => (ui.heroCover = null);
+  });
+
+  // A page that failed while offline loads by itself once the connection is back.
+  $effect(() => {
+    if (offline.online && untrack(() => error)) load();
   });
 
   const following = $derived(library.isFollowing(source, id));

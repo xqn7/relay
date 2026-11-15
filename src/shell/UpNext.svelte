@@ -51,7 +51,7 @@
     width: 340px;
     padding: 10px 10px 10px 10px;
     border-radius: var(--r-lg);
-    background: rgba(20, 20, 22, 0.6);
+    background: rgba(var(--panel), 0.6);
   }
   .text {
     flex: 1;

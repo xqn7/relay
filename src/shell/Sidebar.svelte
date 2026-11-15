@@ -64,7 +64,7 @@
 </script>
 
 <nav class="sidebar">
-  <div class="logo" data-tauri-drag-region><img src={logo} alt="Relay" width="30" height="30" draggable="false" /></div>
+  <div class="logo" data-tauri-drag-region><img class="logo-mark" src={logo} alt="Relay" width="30" height="30" draggable="false" /></div>
   <div class="rail">
     <button class:active={isRoute("home")} aria-label={t("nav.home")} title={t("nav.home")} onclick={() => ui.open({ name: "home" })}>
       <Icon name="home" size={20} />
@@ -202,7 +202,7 @@
     gap: 6px;
     padding: 6px;
     border-radius: var(--r-lg);
-    background: rgba(0, 0, 0, 0.22);
+    background: var(--well);
   }
   .lists {
     margin-top: 10px;
@@ -252,13 +252,13 @@
     background: var(--hover);
   }
   .item.active {
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.55);
+    box-shadow: 0 0 0 2px rgba(var(--ink), 0.55);
   }
   .item.over,
   .files {
     color: var(--text);
     transform: scale(1.12);
-    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.9);
+    box-shadow: 0 0 0 2px rgba(var(--ink), 0.9);
   }
   .glyph {
     display: grid;
@@ -266,11 +266,11 @@
     width: 36px;
     height: 36px;
     border-radius: 7px;
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(var(--ink), 0.08);
     color: var(--text-2);
   }
   .opened .glyph {
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
     color: var(--text);
   }
   .nested {
@@ -280,7 +280,7 @@
     gap: 4px;
     padding: 4px 0;
     border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(var(--ink), 0.04);
   }
   .small {
     width: 36px;

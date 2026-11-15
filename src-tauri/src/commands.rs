@@ -145,12 +145,26 @@ pub async fn search(state: St<'_>, source: String, query: String, kind: SearchKi
     if query.is_empty() || query.chars().count() > 200 {
         return Err(AppError::new("invalid_input", "bad query"));
     }
-    match source.as_str() {
-        YOUTUBE => state.yt.search(&query, kind).await,
-        SOUNDCLOUD => state.sc.search(&query, kind).await,
-        _ => Err(AppError::new("invalid_input", "unknown source")),
+    // Offline, a search would only sit through the library's retries; say so at once.
+    if !crate::network::ensure_online(state.inner()).await {
+        return Err(AppError::new("offline", "no internet connection"));
     }
+    let search = async {
+        match source.as_str() {
+            YOUTUBE => state.yt.search(&query, kind).await,
+            SOUNDCLOUD => state.sc.search(&query, kind).await,
+            _ => Err(AppError::new("invalid_input", "unknown source")),
+        }
+    };
+    // rustypipe retries failed requests with backoff, which can add up to minutes.
+    let result = tokio::time::timeout(SEARCH_TIMEOUT, search).await.unwrap_or_else(|_| Err(AppError::new("timeout", "search took too long")));
+    if let Err(e) = &result {
+        crate::network::suspect(state.inner(), e.code);
+    }
+    result
 }
+
+const SEARCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
 
 #[tauri::command]
 pub fn search_history(state: St) -> AppResult<Vec<String>> {

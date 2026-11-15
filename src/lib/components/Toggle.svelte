@@ -15,11 +15,11 @@
     padding: 0;
     border: 0;
     border-radius: var(--r-full);
-    background: rgba(255, 255, 255, 0.16);
+    background: rgba(var(--ink), 0.16);
     transition: background var(--t) var(--ease);
   }
   .toggle.on {
-    background: rgba(255, 255, 255, 0.42);
+    background: var(--toggle-on);
   }
   .knob {
     position: absolute;
@@ -28,7 +28,8 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: #fff;
+    background: var(--knob);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
     transition: transform var(--t) var(--ease);
   }
   .on .knob {

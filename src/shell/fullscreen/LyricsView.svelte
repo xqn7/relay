@@ -264,7 +264,7 @@
     height: 34px;
     padding: 0 2px 0 12px;
     border-radius: var(--r-md);
-    background: rgba(20, 20, 22, 0.5);
+    background: rgba(var(--panel), 0.5);
   }
   .search input {
     width: 180px;
@@ -340,7 +340,7 @@
   }
   .line.hit,
   .pline.hit {
-    outline: 1px solid rgba(255, 255, 255, 0.25);
+    outline: 1px solid rgba(var(--ink), 0.25);
     outline-offset: -1px;
   }
   .tr {
@@ -359,7 +359,7 @@
     font-size: clamp(18px, 1.8vw, 24px);
     font-weight: 600;
     line-height: 1.4;
-    color: rgba(255, 255, 255, 0.86);
+    color: rgba(var(--ink), 0.86);
   }
   .note {
     margin: 0 14px 12px;

@@ -172,7 +172,7 @@
     width: 16px;
     height: 16px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.14);
+    background: rgba(var(--ink), 0.14);
     color: var(--text);
   }
   .album {

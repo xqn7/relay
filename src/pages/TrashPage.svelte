@@ -131,7 +131,7 @@
     width: 44px;
     height: 44px;
     border-radius: 6px;
-    background: rgba(255, 255, 255, 0.07);
+    background: rgba(var(--ink), 0.07);
     color: var(--text-2);
   }
   .text {

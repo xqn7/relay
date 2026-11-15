@@ -57,7 +57,7 @@
 
 <svelte:window onkeydown={onKey} />
 
-<div class="full" role="dialog" aria-modal="true" aria-label={t("full.title")} transition:fly={{ y: 24, duration: 220 }}>
+<div class="full theme-dark" role="dialog" aria-modal="true" aria-label={t("full.title")} transition:fly={{ y: 24, duration: 220 }}>
   <Backdrop cover={cover} place="fullscreen" bind:colors />
   {#if settings.values.visualizer && visual.quality !== "low" && track}<Visualizer {colors} style={settings.values.visualizerStyle} />{/if}
   <div class="top" data-tauri-drag-region>
@@ -211,7 +211,7 @@
     place-items: center;
     width: 100%;
     height: 100%;
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(var(--ink), 0.06);
     color: var(--text-3);
   }
   .meta {

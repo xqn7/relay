@@ -41,6 +41,8 @@ export const pages: PageDef[] = [
     icon: "palette",
     label: "settings.page.appearance",
     rows: [
+      ["settings.language", "settings.languageDesc"],
+      ["settings.theme", "settings.themeDesc"],
       ["quality.title", "quality.desc"],
       ["bg.mode", "bg.modeDesc"],
       ["bg.mix", "bg.mixDesc"],
@@ -123,6 +125,18 @@ export const pages: PageDef[] = [
       ["startup.play", "startup.playDesc"],
     ],
   },
-  { id: "about", group: "settings.group.application", icon: "info", label: "settings.page.about", rows: [["about.app", "about.appDesc"], ["about.ytdlp", "about.ytdlpMissing"]] },
-  { id: "docs", group: "settings.group.help", icon: "book", label: "settings.page.docs", rows: [] },
+  { id: "about", group: "settings.group.application", icon: "info", label: "settings.page.about", rows: [["about.app", "about.appDesc"], ["about.ytdlp", "about.ytdlpMissing"], ["about.repo", "about.issues"]] },
+  {
+    id: "docs",
+    group: "settings.group.help",
+    icon: "book",
+    label: "settings.page.docs",
+    rows: [
+      ["docs.import.title", "docs.import.1"],
+      ["docs.liked.title", "docs.liked.paste"],
+      ["docs.local.title", "docs.local.body"],
+      ["docs.broken.title", "docs.broken.1"],
+      ["docs.keys.title", "docs.keys.search"],
+    ],
+  },
 ];

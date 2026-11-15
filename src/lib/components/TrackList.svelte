@@ -235,7 +235,7 @@
     right: 8px;
     height: 2px;
     border-radius: 2px;
-    background: rgba(255, 255, 255, 0.85);
+    background: rgba(var(--ink), 0.85);
     pointer-events: none;
   }
 </style>
