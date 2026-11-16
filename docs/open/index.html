@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Open in Relay</title>
+    <!-- Shared Relay playlists are clickable https links (chat apps don't make relay:// links
+         clickable). The playlist is in the part after #, which browsers never send to a server;
+         this page only hands it to Relay on this PC. -->
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0a0a0b;
+        --panel: rgba(255, 255, 255, 0.06);
+        --text: #ffffff;
+        --text-2: rgba(255, 255, 255, 0.62);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 16px;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+      }
+      main {
+        width: min(400px, 100%);
+        padding: 28px;
+        border-radius: 16px;
+        background: var(--panel);
+        text-align: center;
+      }
+      h1 {
+        margin: 0 0 6px;
+        font-size: 22px;
+      }
+      p {
+        margin: 0 0 18px;
+        color: var(--text-2);
+      }
+      a.button {
+        display: block;
+        padding: 11px 16px;
+        border-radius: 10px;
+        background: #ffffff;
+        color: #0a0a0b;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      a.quiet {
+        display: inline-block;
+        margin-top: 14px;
+        color: var(--text-2);
+        font-size: 13px;
+      }
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1 id="title">Opening Relay…</h1>
+      <p id="text">Your browser asks whether to open Relay. Say yes, and the playlist opens there.</p>
+      <a class="button" id="open" href="#">Open in Relay</a>
+      <a class="quiet" href="https://github.com/xqn7/relay/releases/latest">Don't have Relay? Get it here</a>
+    </main>
+    <script>
+      // "#<data>" for Relay, "#dev:<data>" for the development build (its own link scheme).
+      const raw = location.hash.slice(1);
+      const dev = raw.startsWith("dev:");
+      const data = dev ? raw.slice(4) : raw;
+      const open = document.getElementById("open");
+      if (/^[A-Za-z0-9_-]+$/.test(data)) {
+        const link = (dev ? "relay-dev" : "relay") + "://playlist/" + data;
+        open.href = link;
+        location.href = link;
+      } else {
+        document.getElementById("title").textContent = "This link is incomplete";
+        document.getElementById("text").textContent = "Ask for the playlist link again; part of it got lost on the way.";
+        open.classList.add("hidden");
+      }
+    </script>
+  </body>
+</html>
