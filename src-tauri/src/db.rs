@@ -259,6 +259,9 @@ CREATE TABLE backgrounds(
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
+"#, r#"
+ALTER TABLE accounts ADD COLUMN lock_hash TEXT;
+ALTER TABLE accounts ADD COLUMN lock_hello INTEGER NOT NULL DEFAULT 0;
 "#];
 
 impl Db {
@@ -346,7 +349,7 @@ impl Db {
     pub fn track(&self, id: &str) -> AppResult<Option<Track>> {
         let data: Option<String> =
             self.with(|c| c.query_row("SELECT data FROM tracks WHERE id=?1", [id], |r| r.get(0)).optional())?;
-        Ok(data.and_then(|d| serde_json::from_str(&d).ok()))
+        Ok(data.and_then(|d| serde_json::from_str::<Track>(&d).ok()).map(Track::with_split_credits))
     }
 }
 

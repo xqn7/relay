@@ -6,6 +6,7 @@
   import Dialog from "../../lib/components/Dialog.svelte";
   import Slider from "../../lib/components/Slider.svelte";
   import { t } from "../../lib/i18n/index.svelte";
+  import { showError } from "../../lib/errors";
   import { dialogs, type Dialog as D } from "../../lib/stores/dialogs.svelte";
   import { ui } from "../../lib/stores/ui.svelte";
 
@@ -95,8 +96,8 @@
     try {
       await done(new Uint8Array(await blob.arrayBuffer()));
       dialogs.close();
-    } catch {
-      ui.toast(t("error.generic"), "alert");
+    } catch (e) {
+      showError(t("errctx.image"), e);
     } finally {
       busy = false;
     }

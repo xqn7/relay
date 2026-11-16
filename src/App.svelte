@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import LockScreen from "./auth/LockScreen.svelte";
   import SignIn from "./auth/SignIn.svelte";
   import { api, type Account } from "./lib/api";
   import Toasts from "./lib/components/Toasts.svelte";
@@ -60,6 +61,19 @@
     session.account = null;
   }
 
+  function unlocked() {
+    const account = session.account;
+    session.locked = false;
+    if (account) enter(account).catch((e) => console.error("startup failed", e));
+  }
+
+  /** Forgot the PIN: back to the sign-in screen; the password opens the account again. */
+  async function forgotPin() {
+    await api.signOut().catch(() => {});
+    session.locked = false;
+    session.account = null;
+  }
+
   /** Started in main.ts; shows the logo if loading takes a while. */
   let { splashTimer }: { splashTimer: number } = $props();
 
@@ -75,7 +89,7 @@
 
   onMount(() => {
     restoreSession()
-      .then(() => (session.account ? enter(session.account) : undefined))
+      .then(() => (session.account && !session.locked ? enter(session.account) : undefined))
       .catch((e) => console.error("startup failed", e))
       .finally(hideSplash);
 
@@ -91,7 +105,9 @@
 </script>
 
 {#if session.ready}
-  {#if session.account}
+  {#if session.account && session.locked}
+    <LockScreen account={session.account} onUnlocked={unlocked} onSignOut={forgotPin} />
+  {:else if session.account}
     <Shell onSignOut={signOut} />
   {:else}
     <SignIn onSignedIn={enter} />

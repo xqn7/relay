@@ -41,11 +41,82 @@ pub fn split_credit(credit: &str) -> Vec<String> {
     for join in ARTIST_JOINS {
         parts = parts.iter().flat_map(|p| p.split(join).map(|s| s.trim().to_string()).collect::<Vec<_>>()).collect();
     }
+    // Uploads also write "A,B" without a space; a comma between digits ("10,000") stays.
+    parts = parts.iter().flat_map(|p| split_bare_commas(p)).collect();
     parts.retain(|p| !p.is_empty());
     if parts.is_empty() {
         vec![credit.trim().to_string()]
     } else {
         parts
+    }
+}
+
+/// SoundCloud uploads often name the song "Artists - Title". When the part before the dash
+/// names the credited artist, it holds the song's artists and the rest is the real title.
+/// Titles like "Intro - Live" (no credited artist before the dash) stay as they are.
+pub fn split_soundcloud_title(title: &str, credited: &str) -> Option<(Vec<String>, String)> {
+    let (left, right) = title.split_once(" - ").or_else(|| title.split_once(" \u{2013} "))?;
+    let right = right.trim();
+    if right.is_empty() {
+        return None;
+    }
+    let names = split_credit(left);
+    let known: Vec<String> = split_credit(credited).iter().map(|n| n.to_lowercase()).collect();
+    names.iter().any(|n| known.contains(&n.to_lowercase())).then(|| (names, right.to_string()))
+}
+
+/// A SoundCloud song's title and artists with "Artists - Title" taken apart; the profile
+/// link stays on the artist named like `linked_name` (the uploader).
+pub fn clean_soundcloud(title: String, artists: Vec<ArtistRef>, linked_name: Option<&str>) -> (String, Vec<ArtistRef>) {
+    let credited = artists.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", ");
+    let owner = artists.iter().find_map(|a| a.id.clone());
+    match split_soundcloud_title(&title, &credited) {
+        Some((names, clean)) => {
+            let first = artists.first().map(|a| a.name.clone());
+            let joined = vec![ArtistRef { id: owner, name: names.join(", ") }];
+            (clean, split_artists(joined, linked_name.or(first.as_deref())))
+        }
+        None => (title, split_artists(artists, linked_name)),
+    }
+}
+
+fn split_bare_commas(name: &str) -> Vec<String> {
+    let chars: Vec<char> = name.chars().collect();
+    let mut out = vec![String::new()];
+    for (i, &c) in chars.iter().enumerate() {
+        let in_number = i > 0 && chars[i - 1].is_ascii_digit() && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit());
+        if c == ',' && !in_number {
+            out.push(String::new());
+        } else if let Some(last) = out.last_mut() {
+            last.push(c);
+        }
+    }
+    out.into_iter().map(|s| s.trim().to_string()).collect()
+}
+
+impl Track {
+    /// Songs saved before credits were split (or saved with "A,B") are split when read, so
+    /// every artist on them can be opened. Only for the services that give one joined credit;
+    /// imported songs already list each artist on their own.
+    pub fn with_split_credits(mut self) -> Self {
+        let artists = std::mem::take(&mut self.artists);
+        self.artists = match self.source.as_str() {
+            SOUNDCLOUD => {
+                let (title, artists) = clean_soundcloud(std::mem::take(&mut self.title), artists, None);
+                self.title = title;
+                artists
+            }
+            // YouTube links each real artist on its own; only unlinked text can be a joined credit.
+            YOUTUBE => artists
+                .into_iter()
+                .flat_map(|a| match a.id {
+                    Some(_) => vec![a],
+                    None => split_credit(&a.name).into_iter().map(|name| ArtistRef { id: None, name }).collect(),
+                })
+                .collect(),
+            _ => artists,
+        };
+        self
     }
 }
 
@@ -58,6 +129,32 @@ mod credit_tests {
         assert_eq!(split_credit("Calvin Harris & Dua Lipa"), vec!["Calvin Harris", "Dua Lipa"]);
         assert_eq!(split_credit("A x B feat. C"), vec!["A", "B", "C"]);
         assert_eq!(split_credit("Adele"), vec!["Adele"]);
+        assert_eq!(split_credit("Lessobaby,YND SOULJA,BLACK 016"), vec!["Lessobaby", "YND SOULJA", "BLACK 016"]);
+        assert_eq!(split_credit("10,000 Maniacs"), vec!["10,000 Maniacs"]);
+    }
+
+    #[test]
+    fn takes_artists_out_of_soundcloud_titles() {
+        let (names, title) = split_soundcloud_title("Lacazette x AVIE x KOLJA GOLDSTEIN - XXX", "Lacazette").unwrap();
+        assert_eq!(names, vec!["Lacazette", "AVIE", "KOLJA GOLDSTEIN"]);
+        assert_eq!(title, "XXX");
+        assert_eq!(split_soundcloud_title("Intro - Live", "Lacazette"), None);
+        assert_eq!(split_soundcloud_title("No dash here", "Lacazette"), None);
+        let (title, artists) = clean_soundcloud("Lacazette x AVIE - XXX".into(), vec![ArtistRef { id: Some("7".into()), name: "Lacazette".into() }], None);
+        assert_eq!(title, "XXX");
+        assert_eq!(artists, vec![ArtistRef { id: Some("7".into()), name: "Lacazette".into() }, ArtistRef { id: None, name: "AVIE".into() }]);
+    }
+
+    #[test]
+    fn saved_songs_are_split_when_read() {
+        let mut t = Track::imported("x", "1", "Song", vec![], None, None, None);
+        t.source = SOUNDCLOUD.into();
+        t.artists = vec![ArtistRef { id: Some("9".into()), name: "Lessobaby,kolja goldstein".into() }];
+        let names: Vec<String> = t.clone().with_split_credits().artists.into_iter().map(|a| a.name).collect();
+        assert_eq!(names, vec!["Lessobaby", "kolja goldstein"]);
+        t.source = YOUTUBE.into();
+        t.artists = vec![ArtistRef { id: Some("UC1".into()), name: "Tyler, The Creator".into() }];
+        assert_eq!(t.with_split_credits().artists.len(), 1, "a linked YouTube artist stays whole");
     }
 
     #[test]

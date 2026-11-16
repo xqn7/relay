@@ -31,6 +31,8 @@ export function errorText(e: unknown): string {
 
 export function serviceName(service: string): string {
   switch (service) {
+    case "relay":
+      return "Relay";
     case "spotify":
       return "Spotify";
     case "deezer":

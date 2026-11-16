@@ -49,6 +49,7 @@ class DesktopStore {
       listen<UpdateInfo>("update-ready", ({ payload }) => this.offerUpdate(payload)),
       listen<boolean>("lyrics-unlocked", ({ payload }) => (this.lyricsUnlocked = payload === true)),
       listen("helper-blocked", () => this.warnBlocked()),
+      listen("open-link", () => this.openSharedLink()),
       listen(READY_EVENT, () => {
         this.sendNow();
         this.sendLyrics();
@@ -63,6 +64,8 @@ class DesktopStore {
       .catch(() => {});
     this.info = await api.desktopInfo().catch(() => null);
     if (this.info?.helperBlocked) this.warnBlocked();
+    // Relay opened by a shared playlist link.
+    this.openSharedLink();
     if (this.info) this.showChangelog(this.info.version);
     visual.game = this.info?.game ?? false;
     this.lyricsUnlocked = this.info?.lyricsUnlocked ?? false;
@@ -184,6 +187,14 @@ class DesktopStore {
     }, LYRICS_IDLE_MS);
   }
 
+  /** A shared relay:// playlist link opens in the import window, like any playlist link. */
+  private openSharedLink(): void {
+    api
+      .takeOpenLink()
+      .then((url) => url && dialogs.open({ kind: "import", url }))
+      .catch((e) => console.error("shared link failed", e));
+  }
+
   /** Once per start, whether the event came first or sign-in did. */
   private warnBlocked(): void {
     if (this.blockedShown) return;
@@ -215,7 +226,11 @@ class DesktopStore {
 
   private offerUpdate(info: UpdateInfo): void {
     this.update = info;
-    ui.toast(t("update.ready", { version: info.version }), "download", { label: t("update.details"), run: () => dialogs.open({ kind: "update", info }) });
+    // Restart installs it; what changed is shown once the new version is running.
+    ui.toast(t("update.ready", { version: info.version }), "download", {
+      label: t("update.restartNow"),
+      run: () => this.install().catch(() => ui.toast(t("update.installFailed"), "alert")),
+    });
   }
 
   async checkForUpdate(): Promise<UpdateInfo | null> {

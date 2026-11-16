@@ -108,7 +108,7 @@ pub fn clean_name(name: &str) -> AppResult<String> {
 }
 
 fn track_from(data: &str) -> Option<Track> {
-    serde_json::from_str(data).ok()
+    serde_json::from_str::<Track>(data).ok().map(Track::with_split_credits)
 }
 
 /// For imported songs: which source plays them ("none" if nothing matched), the matched

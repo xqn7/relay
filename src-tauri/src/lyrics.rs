@@ -40,7 +40,7 @@ pub struct Lyrics {
     pub synced: Option<Vec<Line>>,
     pub plain: Option<String>,
     pub instrumental: bool,
-    /// "lrclib", "youtube" or "user".
+    /// "lrclib", "youtube", "genius" or "user".
     pub source: String,
     /// The credit line YouTube shows under its lyrics.
     pub credit: Option<String>,
@@ -275,7 +275,23 @@ async fn look_up(state: &AppState, track: &Track) -> AppResult<Option<Lyrics>> {
     if let Ok(Some(found)) = lrclib {
         return Ok(Some(found));
     }
-    match (lrclib, youtube(state, track).await) {
+    let youtube = youtube(state, track).await;
+    if let Ok(Some(found)) = youtube {
+        return Ok(Some(found));
+    }
+    // German rap and other songs the two above don't have are often on Genius. Its failure
+    // doesn't count as an error: the song may simply have no lyrics anywhere.
+    for (artist, title) in queries(track).iter().take(2) {
+        match crate::genius::lyrics(state, artist, title).await {
+            Ok(Some(text)) => return Ok(Some(Lyrics { synced: None, plain: Some(text), instrumental: false, source: "genius".into(), credit: None })),
+            Ok(None) => {}
+            Err(e) => {
+                eprintln!("Genius lyrics failed: {e}");
+                break;
+            }
+        }
+    }
+    match (lrclib, youtube) {
         (_, Ok(Some(found))) => Ok(Some(found)),
         (Ok(_), Ok(None)) => Ok(None),
         // YouTube answered, so the internet works and it's LRCLIB that failed: say so instead

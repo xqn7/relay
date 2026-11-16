@@ -137,10 +137,8 @@ fn insert_rows(c: &Connection, table: &str, rows: &[Value]) -> rusqlite::Result<
     Ok(())
 }
 
-/// Loads a backup. Accounts in it replace the same accounts on this PC (matched by id or
-/// email), with their whole library; other accounts on this PC are left alone. Returns the
-/// number of accounts restored.
-pub fn restore(db: &Db, backup: &Value) -> AppResult<usize> {
+/// Everything a restore checks before it changes anything: a backup that passes can be loaded.
+fn restorable(backup: &Value) -> AppResult<&Map<String, Value>> {
     if backup.get("app").and_then(Value::as_str) != Some(APP) {
         return Err(AppError::new("bad_file", "not a Relay backup"));
     }
@@ -148,12 +146,20 @@ pub fn restore(db: &Db, backup: &Value) -> AppResult<usize> {
         return Err(AppError::new("bad_file", "backup from a newer Relay"));
     }
     let tables = backup.get("tables").and_then(Value::as_object).ok_or_else(|| AppError::new("bad_file", "no tables"))?;
-    let rows_of = |t: &str| tables.get(t).and_then(Value::as_array).cloned().unwrap_or_default();
-    let accounts = rows_of("accounts");
-    if accounts.is_empty() {
+    if tables.get("accounts").and_then(Value::as_array).is_none_or(|a| a.is_empty()) {
         return Err(AppError::new("bad_file", "backup has no accounts"));
     }
     validate(tables)?;
+    Ok(tables)
+}
+
+/// Loads a backup. Accounts in it replace the same accounts on this PC (matched by id or
+/// email), with their whole library; other accounts on this PC are left alone. Returns the
+/// number of accounts restored.
+pub fn restore(db: &Db, backup: &Value) -> AppResult<usize> {
+    let tables = restorable(backup)?;
+    let rows_of = |t: &str| tables.get(t).and_then(Value::as_array).cloned().unwrap_or_default();
+    let accounts = rows_of("accounts");
     let signed_in = db.device_get("signed_in_account")?;
     // One transaction under one lock: a failure anywhere leaves this PC's data as it was.
     let new_signed_in = db.with(|c| {
@@ -196,12 +202,29 @@ pub fn restore(db: &Db, backup: &Value) -> AppResult<usize> {
     Ok(accounts.len())
 }
 
+/// Writes the backup, then reads the written file back and checks it would restore before it
+/// replaces the previous backup (a full disk or a cloud folder mid-sync can leave a cut-off
+/// file). A file that fails is written once more; if that fails too, the old backup stays.
 pub async fn write_file(db: &Db, path: &Path) -> AppResult<()> {
     let text = serde_json::to_vec(&export(db)?)?;
     let tmp = path.with_extension("tmp");
-    tokio::fs::write(&tmp, text).await?;
-    tokio::fs::rename(&tmp, path).await?;
-    Ok(())
+    let mut last_err = None;
+    for _ in 0..2 {
+        tokio::fs::write(&tmp, &text).await?;
+        let written = tokio::fs::read(&tmp).await?;
+        let check = serde_json::from_slice::<Value>(&written).map_err(|_| AppError::new("bad_file", "backup didn't read back")).and_then(|v| restorable(&v).map(|_| ()));
+        match check {
+            Ok(()) => {
+                tokio::fs::rename(&tmp, path).await?;
+                return Ok(());
+            }
+            Err(e) => last_err = Some(e),
+        }
+    }
+    let _ = tokio::fs::remove_file(&tmp).await;
+    let e = last_err.unwrap_or_else(|| AppError::new("bad_file", "backup check failed"));
+    eprintln!("backup check failed, the previous backup is kept: {e}");
+    Err(AppError::new("backup_unreadable", e.detail))
 }
 
 pub async fn read_file(db: &Db, path: &Path) -> AppResult<usize> {

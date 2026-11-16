@@ -3175,6 +3175,7 @@ dependencies = [
  "argon2",
  "lofty",
  "minisign-verify",
+ "miniz_oxide 0.8.9",
  "notify",
  "password-hash",
  "reqwest 0.12.28",
@@ -3191,6 +3192,7 @@ dependencies = [
  "webview2-com",
  "windows 0.62.2",
  "windows-core 0.62.2",
+ "windows-future",
 ]
 
 [[package]]

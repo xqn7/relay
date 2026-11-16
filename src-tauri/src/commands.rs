@@ -20,6 +20,14 @@ const MAX_QUEUE_BYTES: usize = 4 * 1024 * 1024;
 const HISTORY_LIMIT: i64 = 12;
 
 pub fn current(state: &AppState) -> AppResult<Account> {
+    if state.lock.is_locked() {
+        return Err(AppError::new("locked", ""));
+    }
+    signed_in(state)
+}
+
+/// The account even while the app is locked: only for the lock's own commands.
+fn signed_in(state: &AppState) -> AppResult<Account> {
     state.account.lock().unwrap_or_else(|p| p.into_inner()).clone().ok_or_else(|| AppError::new("signed_out", ""))
 }
 
@@ -35,6 +43,12 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> AppResult<T> + Send + '
 #[tauri::command]
 pub fn auth_state(state: St) -> AppResult<Option<Account>> {
     let account = accounts::remembered(&state.db)?;
+    // A remembered account with an app lock starts locked; a password sign-in never is.
+    let locked = match &account {
+        Some(a) => crate::applock::settings_of(&state.db, &a.id)?.0.is_some(),
+        None => false,
+    };
+    state.lock.set_locked(locked);
     set_current(&state, account.clone());
     Ok(account)
 }
@@ -53,6 +67,7 @@ pub async fn sign_up(state: St<'_>, email: String, password: String, keep: bool)
 pub async fn sign_in(state: St<'_>, email: String, password: String, keep: bool) -> AppResult<Account> {
     let db = state.db.clone();
     let account = blocking(move || accounts::sign_in(&db, &email, &password, keep)).await?;
+    state.lock.set_locked(false);
     set_current(&state, Some(account.clone()));
     Ok(account)
 }
@@ -61,6 +76,7 @@ pub async fn sign_in(state: St<'_>, email: String, password: String, keep: bool)
 pub async fn reset_password(state: St<'_>, email: String, recovery_key: String, new_password: String) -> AppResult<Account> {
     let db = state.db.clone();
     let account = blocking(move || accounts::reset_password(&db, &email, &recovery_key, &new_password)).await?;
+    state.lock.set_locked(false);
     set_current(&state, Some(account.clone()));
     Ok(account)
 }
@@ -71,6 +87,7 @@ pub fn sign_out(state: St) -> AppResult<()> {
     state.media.clear();
     // The next person to sign in starts with a normal session.
     state.private.store(false, std::sync::atomic::Ordering::Relaxed);
+    state.lock.set_locked(false);
     set_current(&state, None);
     Ok(())
 }
@@ -313,6 +330,56 @@ pub async fn account_new_recovery_key(state: St<'_>, password: String) -> AppRes
     let id = current(&state)?.id;
     let db = state.db.clone();
     blocking(move || accounts::renew_recovery_key(&db, &id, &password)).await
+}
+
+// ---- app lock ------------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn lock_status(state: St) -> AppResult<crate::applock::Status> {
+    crate::applock::status(&state.db, &state.lock, &signed_in(&state)?.id)
+}
+
+#[tauri::command]
+pub async fn lock_set_pin(state: St<'_>, password: String, pin: String) -> AppResult<()> {
+    let id = current(&state)?.id;
+    let db = state.db.clone();
+    blocking(move || crate::applock::set_pin(&db, &id, &password, &pin)).await
+}
+
+#[tauri::command]
+pub async fn lock_off(state: St<'_>, password: String) -> AppResult<()> {
+    let id = current(&state)?.id;
+    let db = state.db.clone();
+    blocking(move || crate::applock::turn_off(&db, &id, &password)).await
+}
+
+#[tauri::command]
+pub fn lock_set_hello(state: St, on: bool) -> AppResult<()> {
+    crate::applock::set_hello(&state.db, &current(&state)?.id, on)
+}
+
+#[tauri::command]
+pub async fn lock_unlock_pin(state: St<'_>, pin: String) -> AppResult<()> {
+    let id = signed_in(&state)?.id;
+    let st = state.inner().clone();
+    blocking(move || crate::applock::unlock_with_pin(&st.db, &st.lock, &id, &pin)).await
+}
+
+/// Windows Hello over Relay's window; unlocks when it says yes.
+#[tauri::command]
+pub async fn lock_unlock_hello(app: tauri::AppHandle, state: St<'_>, message: String) -> AppResult<bool> {
+    use tauri::Manager;
+    let id = signed_in(&state)?.id;
+    if !crate::applock::settings_of(&state.db, &id)?.1 {
+        return Err(AppError::new("no_hello", ""));
+    }
+    let window = app.get_webview_window("main").and_then(|w| w.hwnd().ok()).map(|h| h.0 as isize).ok_or_else(|| AppError::new("internal", "no window"))?;
+    let message: String = message.chars().take(200).collect();
+    let ok = blocking(move || crate::applock::verify_with_hello(window, &message)).await?;
+    if ok {
+        state.lock.set_locked(false);
+    }
+    Ok(ok)
 }
 
 /// Clears listening history: "hour", "day", "week" or "all".

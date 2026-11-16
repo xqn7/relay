@@ -171,6 +171,25 @@ fn secrets_of(db: &Db, account_id: &str) -> AppResult<(String, String)> {
         .ok_or_else(|| AppError::new("no_account", ""))
 }
 
+/// Confirms the signed-in account's password (before changing the app lock).
+pub fn check_password(db: &Db, account_id: &str, password: &str) -> AppResult<()> {
+    let (stored, _) = secrets_of(db, account_id)?;
+    if verify(password, &stored) {
+        Ok(())
+    } else {
+        Err(AppError::new("wrong_password", ""))
+    }
+}
+
+/// The same slow hash as passwords, for the app lock PIN.
+pub fn hash_secret(secret: &str) -> AppResult<String> {
+    hash(secret)
+}
+
+pub fn matches_secret(secret: &str, stored: &str) -> bool {
+    verify(secret, stored)
+}
+
 /// Settings → Account: a new password, after the current one is confirmed.
 pub fn change_password(db: &Db, account_id: &str, current: &str, new_password: &str) -> AppResult<()> {
     let (stored, _) = secrets_of(db, account_id)?;

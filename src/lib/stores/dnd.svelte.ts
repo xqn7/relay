@@ -13,6 +13,8 @@ export interface DropHandler {
   drop: (p: Payload, x: number, y: number) => void;
 }
 
+/** A click this soon after a drag ended belongs to the drag. */
+const CLICK_AFTER_DRAG_MS = 120;
 /** Pixels the pointer must travel before a press becomes a drag (so clicks stay clicks). */
 const THRESHOLD = 6;
 
@@ -27,6 +29,7 @@ class DndStore {
   // grid), so a key keeps every live handler; removing one must not drop the other.
   private handlers = new Map<string, DropHandler[]>();
   private armed: { make: () => Payload; x: number; y: number } | null = null;
+  private endedAt = 0;
 
   /** Call on pointerdown; the drag starts only once the pointer has moved a little. */
   arm(e: PointerEvent, make: () => Payload): void {
@@ -81,7 +84,13 @@ class DndStore {
     return null;
   }
 
+  /** True right after a drag ended, so the press that started it doesn't also count as a click. */
+  justDropped(): boolean {
+    return performance.now() - this.endedAt < CLICK_AFTER_DRAG_MS;
+  }
+
   private stop(): void {
+    if (this.payload) this.endedAt = performance.now();
     this.armed = null;
     this.payload = null;
     this.target = null;

@@ -22,6 +22,7 @@ export const pages: PageDef[] = [
     rows: [
       ["account.password", "account.passwordDesc"],
       ["account.recovery", "account.recoveryDesc"],
+      ["lock.title", "lock.desc"],
       ["account.history", "account.historyDesc"],
     ],
   },
@@ -135,7 +136,7 @@ export const pages: PageDef[] = [
       ["startup.play", "startup.playDesc"],
     ],
   },
-  { id: "about", group: "settings.group.application", icon: "info", label: "settings.page.about", rows: [["about.app", "about.appDesc"], ["problem.title", "about.problemDesc"], ["about.repo", "about.issues"]] },
+  { id: "about", group: "settings.group.application", icon: "info", label: "settings.page.about", rows: [["about.app", "about.appDesc"], ["problem.title", "about.problemDesc"], ["about.repo", "about.repoDesc"], ["about.releases", "about.releasesDesc"]] },
   {
     id: "docs",
     group: "settings.group.help",

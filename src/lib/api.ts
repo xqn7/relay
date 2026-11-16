@@ -249,7 +249,7 @@ export interface Lyrics {
   synced: LyricLine[] | null;
   plain: string | null;
   instrumental: boolean;
-  source: "lrclib" | "youtube" | "user";
+  source: "lrclib" | "youtube" | "genius" | "user";
   credit: string | null;
 }
 
@@ -349,6 +349,15 @@ export interface ToolProgress {
   phase: "waiting" | "downloading" | "unpacking" | "ready" | "failed";
   done: number;
   total: number;
+}
+
+/** The app lock of the signed-in account. */
+export interface LockStatus {
+  pin: boolean;
+  hello: boolean;
+  helloAvailable: boolean;
+  locked: boolean;
+  waitSecs: number;
 }
 
 /** A song found by a line of its lyrics. */
@@ -511,11 +520,19 @@ export const api = {
   connectionCheck: () => invoke<ConnectionCheck[]>("connection_check"),
   logTail: () => invoke<string>("log_tail"),
   releaseNotes: () => invoke<string>("release_notes"),
+  playlistShareLink: (id: string) => invoke<[string, number]>("playlist_share_link", { id }),
+  takeOpenLink: () => invoke<string | null>("take_open_link"),
   recoveryKeySave: (text: string) => invoke<boolean>("recovery_key_save", { text }),
   accountChangePassword: (currentPassword: string, newPassword: string) => invoke<void>("account_change_password", { currentPassword, newPassword }),
   accountNewRecoveryKey: (password: string) => invoke<string>("account_new_recovery_key", { password }),
   libraryDamaged: () => invoke<string | null>("library_damaged"),
   libraryRestoreNewest: () => invoke<number>("library_restore_newest"),
+  lockStatus: () => invoke<LockStatus>("lock_status"),
+  lockSetPin: (password: string, pin: string) => invoke<void>("lock_set_pin", { password, pin }),
+  lockOff: (password: string) => invoke<void>("lock_off", { password }),
+  lockSetHello: (on: boolean) => invoke<void>("lock_set_hello", { on }),
+  lockUnlockPin: (pin: string) => invoke<void>("lock_unlock_pin", { pin }),
+  lockUnlockHello: (message: string) => invoke<boolean>("lock_unlock_hello", { message }),
   historyClear: (range: "hour" | "day" | "week" | "all") => invoke<number>("history_clear", { range }),
   updateReady: () => invoke<UpdateInfo | null>("update_ready"),
   lyricsSearch: (query: string) => invoke<LyricHit[]>("lyrics_search", { query }),

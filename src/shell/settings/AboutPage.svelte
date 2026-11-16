@@ -14,7 +14,6 @@
   const REPO = "https://github.com/xqn7/relay";
   const links = [
     { label: "about.repo", desc: "about.repoDesc", url: REPO },
-    { label: "about.issues", desc: "about.issuesDesc", url: `${REPO}/issues` },
     { label: "about.releases", desc: "about.releasesDesc", url: `${REPO}/releases` },
   ] as const;
 

@@ -37,9 +37,15 @@ function isLang(value: string | null): value is Lang {
 }
 
 function initialLang(): Lang {
-  const saved = localStorage.getItem(STORAGE_KEY);
+  // Storage can be missing or blocked; the system language (or English) is used then.
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    saved = null;
+  }
   if (isLang(saved)) return saved;
-  const wanted = navigator.language.toLowerCase().slice(0, 2);
+  const wanted = (globalThis.navigator?.language ?? "en").toLowerCase().slice(0, 2);
   return isLang(wanted) ? wanted : "en";
 }
 

@@ -149,6 +149,7 @@
     if (!d) return "";
     if (d.source === "user") return t("lyrics.yours");
     if (d.source === "youtube") return d.credit ?? t("lyrics.fromYoutube");
+    if (d.source === "genius") return t("lyrics.fromGenius");
     return t("lyrics.fromLrclib");
   });
 

@@ -28,6 +28,8 @@ password-hash = { version = "0.5", features = ["getrandom"] }
 # userdata: the signed-in YouTube Music library ("Sync library").
 rustypipe = { version = "0.11", default-features = false, features = ["rustls-tls-webpki-roots", "userdata"] }
 sha2 = "0.10"
+# Packs shared playlist links small; already compiled as part of the build (image decoding).
+miniz_oxide = "0.8"
 tauri-plugin-single-instance = "2"
 # Native folder/file pickers (Add files, Local music folder, cover image).
 tauri-plugin-dialog = "2"
@@ -40,7 +42,9 @@ notify = { version = "8", default-features = false }
 windows-core = "0.62"
 # Already part of Tauri's WebView2 layer; used to let the page list audio outputs by name.
 webview2-com = "0.39"
-windows = { version = "0.62", features = ["Media", "Foundation", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_System_Com", "Win32_Media_Audio", "Win32_UI_Shell_PropertiesSystem", "Networking_Connectivity", "Win32_Storage_FileSystem", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell_Common", "Win32_UI_Shell", "Win32_Security_Credentials", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_System_Power", "Win32_System_Threading", "Win32_Graphics_Dxgi", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_NetworkManagement_Dns", "Win32_System_Console"] }
+windows = { version = "0.62", features = ["Media", "Foundation", "Storage_Streams", "Win32_Foundation", "Win32_System_WinRT", "Win32_System_Com", "Win32_Media_Audio", "Win32_UI_Shell_PropertiesSystem", "Networking_Connectivity", "Win32_Storage_FileSystem", "Win32_System_Ole", "Win32_System_SystemServices", "Win32_UI_Shell_Common", "Win32_UI_Shell", "Win32_Security_Credentials", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_Accessibility", "Win32_System_Power", "Win32_System_Threading", "Win32_Graphics_Dxgi", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_System_Registry", "Win32_System_SystemInformation", "Win32_NetworkManagement_Dns", "Win32_System_Console", "Security_Credentials_UI"] }
+# Waits for Windows Hello's answer; already compiled as part of `windows`, named here to use its type.
+windows-future = "0.3"
 
 # Thin LTO in parallel parts: a release builds in about 1.5 minutes instead of 6, for about
 # 2.6 MB more exe (22 MB instead of 19.4 MB; measured 2026-11-15). Chosen for faster releases.

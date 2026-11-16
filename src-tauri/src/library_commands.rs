@@ -314,6 +314,31 @@ pub fn trash_purge_expired(state: St) -> AppResult<()> {
 
 // ---- imports --------------------------------------------------------------------------
 
+/// "Copy share link": the playlist as a relay:// link, and how many songs it carries.
+/// Imported songs travel as the version they play from, so the friend's Relay needn't match them.
+#[tauri::command]
+pub fn playlist_share_link(state: St, id: String) -> AppResult<(String, usize)> {
+    let account = current(&state)?.id;
+    let detail = library::playlist_detail(&state.db, &account, &id)?;
+    let mut tracks = Vec::with_capacity(detail.items.len());
+    for item in detail.items {
+        let t = item.track;
+        let played = if crate::sources::is_import_only(&t.source) {
+            library::get_match(&state.db, &t.source, &t.source_id)?.flatten().unwrap_or(t)
+        } else {
+            t
+        };
+        tracks.push(played);
+    }
+    crate::sharelink::build(&detail.playlist.name, &tracks)
+}
+
+/// A shared link Relay was opened with (or that arrived while it ran), once.
+#[tauri::command]
+pub fn take_open_link(state: St) -> Option<String> {
+    state.open_link.lock().unwrap_or_else(|p| p.into_inner()).take()
+}
+
 #[tauri::command]
 pub async fn import_preview(state: St<'_>, url: String) -> AppResult<RemoteList> {
     current(&state)?;

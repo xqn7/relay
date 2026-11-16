@@ -242,14 +242,18 @@
       {#snippet actions()}
         <Button variant="primary" icon="play" disabled={tracks.length === 0} onclick={() => playAll(false)}>{t("playlist.playAll")}</Button>
         <IconButton icon="shuffle" label={t("playlist.shuffle")} variant="solid" disabled={tracks.length === 0} onclick={() => playAll(true)} />
-        <Button
-          variant="secondary"
-          icon="queue"
-          disabled={tracks.length === 0}
-          onclick={() => {
-            player.addTracks(tracks);
-            ui.toast(t("toast.addedToQueue"), "queue");
-          }}>{t("menu.addToQueue")}</Button>
+        {#if mode === "playlist"}
+          <Button variant="secondary" icon="plus" onclick={() => dialogs.open({ kind: "addSongs", playlistId: id, name: title })}>{t("addSongs.button")}</Button>
+        {:else}
+          <Button
+            variant="secondary"
+            icon="queue"
+            disabled={tracks.length === 0}
+            onclick={() => {
+              player.addTracks(tracks);
+              ui.toast(t("toast.addedToQueue"), "queue");
+            }}>{t("menu.addToQueue")}</Button>
+        {/if}
         {#if mode === "local"}
           <Button variant="secondary" icon="plus" onclick={addFiles}>{t("local.addFiles")}</Button>
         {:else if mode === "playlist" || mode === "liked"}

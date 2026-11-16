@@ -32,8 +32,12 @@
       <MergeDialog playlistId={d.playlistId} />
     {:else if d.kind === "connection"}
       <ConnectionDialog />
+    {:else if d.kind === "error"}
+      {#await import("./ErrorDialog.svelte") then m}<m.default error={d.error} context={d.context} />{/await}
+    {:else if d.kind === "addSongs"}
+      {#await import("./AddSongsDialog.svelte") then m}<m.default playlistId={d.playlistId} name={d.name} />{/await}
     {:else if d.kind === "problem"}
-      {#await import("./ProblemDialog.svelte") then m}<m.default />{/await}
+      {#await import("./ProblemDialog.svelte") then m}<m.default prefill={d.text ?? ""} />{/await}
     {:else if d.kind === "update" || d.kind === "hardware" || d.kind === "changelog"}
       <DesktopDialogs {d} />
     {:else if d.kind === "versions"}

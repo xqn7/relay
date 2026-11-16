@@ -2,6 +2,7 @@
 // volume (saved per PC, keyed by the device's name, which stays the same across restarts
 // while Chromium's device ids don't have to).
 import { BUILT_IN, flatEq, presetGains, type EqState } from "../audio/eq";
+import { showError } from "../errors";
 import { t } from "../i18n/index.svelte";
 import { player } from "./player.svelte";
 import { settings, type DeviceProfile } from "./settings.svelte";
@@ -139,8 +140,7 @@ class SoundStore {
   setPitch(semitones: number): void {
     settings.set("pitch", Math.round(semitones));
     player.engine.setPitch(settings.values.pitch).catch((e) => {
-      console.error("pitch failed", e);
-      ui.toast(t("error.generic"), "alert");
+      showError(t("errctx.pitch"), e);
     });
   }
 }

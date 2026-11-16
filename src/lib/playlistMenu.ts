@@ -65,6 +65,16 @@ export function playlistMenuItems(p: PlaylistSummary): MenuItem[] {
   }
   items.push(
     {
+      label: t("share.playlistLink"),
+      icon: "link",
+      disabled: p.count === 0,
+      action: () =>
+        api
+          .playlistShareLink(p.id)
+          .then(([link, n]) => navigator.clipboard.writeText(link).then(() => ui.toast(t("share.playlistCopied", { n }), "check")))
+          .catch(fail),
+    },
+    {
       label: t("playlist.exportM3u"),
       icon: "upload",
       action: () =>

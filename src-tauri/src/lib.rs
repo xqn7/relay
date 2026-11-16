@@ -1,4 +1,5 @@
 mod accounts;
+mod applock;
 mod audio_devices;
 mod backup;
 mod commands;
@@ -8,6 +9,7 @@ mod desktop;
 mod desktop_commands;
 mod discord;
 mod email_check;
+mod genius;
 mod error;
 mod export;
 mod hardware;
@@ -34,6 +36,7 @@ mod profile;
 mod report;
 mod resolver;
 mod secrets;
+mod sharelink;
 mod sound;
 mod sound_commands;
 mod sources;
@@ -92,6 +95,9 @@ pub struct AppState {
     pub desktop: desktop::Desktop,
     pub updater: updater::Updater,
     pub reports: report::Reports,
+    pub lock: applock::Lock,
+    /// A relay:// playlist link to open once the page is ready (see take_open_link).
+    pub open_link: Mutex<Option<String>>,
     /// The library file was damaged at start and set aside (see Db::open_checked).
     pub library_damaged: AtomicBool,
     pub youtube_account: youtube_account::YouTubeAccount,
@@ -122,6 +128,9 @@ pub(crate) fn show_main(app: &AppHandle) {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+    }
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        updater::check_when_shown(state.inner());
     }
 }
 
@@ -221,6 +230,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         desktop: desktop::Desktop::new(in_tray),
         updater: updater::Updater::new(&local_dir),
         reports: report::Reports::default(),
+        lock: applock::Lock::default(),
+        open_link: Mutex::new(std::env::args().find(|a| sharelink::is_share_link(a))),
         library_damaged: AtomicBool::new(library_damaged),
         youtube_account: youtube_account::YouTubeAccount::load(),
         yt: YouTube::new(&local_dir.join("youtube"), tools.clone(), http.clone())?,
@@ -258,6 +269,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let state = state.clone();
         tauri::async_runtime::spawn_blocking(move || {
             desktop::sync_autostart(&state);
+            register_link_scheme();
             youtube_account::sync_tools(&state);
         });
     }
@@ -322,6 +334,21 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// Lets Windows open relay:// links (relay-dev:// for Relay Dev) with this Relay. Written each
+/// start, so it follows the app when it's moved or updated.
+fn register_link_scheme() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let scheme = sharelink::scheme();
+    let base = format!(r"Software\Classes\{scheme}");
+    let command = format!(r#""{}" "%1""#, exe.display());
+    let written = winreg::set_user_string(&base, "", &format!("URL:{} playlist link", app_name()))
+        .and_then(|_| winreg::set_user_string(&base, "URL Protocol", ""))
+        .and_then(|_| winreg::set_user_string(&format!(r"{base}\shell\open\command"), "", &command));
+    if let Err(e) = written {
+        eprintln!("couldn't register {scheme}:// links: {e}");
+    }
+}
+
 /// On start: does yt-dlp run at all (an antivirus can block it), and is it the newest?
 async fn check_ytdlp(state: &Arc<AppState>) {
     match state.tools.ytdlp_health().await {
@@ -344,7 +371,17 @@ pub fn run() {
         // A second launch (desktop shortcut, Start menu) brings the running player forward
         // instead of starting another one that would fight over the database and audio.
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            // A shared playlist link clicked while Relay runs: Windows starts a second Relay
+            // with it, which hands it over here.
+            if let Some(link) = args.iter().find(|a| sharelink::is_share_link(a)) {
+                if let Some(state) = app.try_state::<Arc<AppState>>() {
+                    *state.open_link.lock().unwrap_or_else(|p| p.into_inner()) = Some(link.clone());
+                }
+                let _ = app.emit("open-link", ());
+            }
+            show_main(app)
+        }))
         .register_asynchronous_uri_scheme_protocol("relay", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -384,6 +421,12 @@ pub fn run() {
             commands::account_change_password,
             commands::account_new_recovery_key,
             commands::history_clear,
+            commands::lock_status,
+            commands::lock_set_pin,
+            commands::lock_off,
+            commands::lock_set_hello,
+            commands::lock_unlock_pin,
+            commands::lock_unlock_hello,
             commands::lyrics_search,
             commands::lyrics_hit_track,
             commands::queue_save,
@@ -464,6 +507,8 @@ pub fn run() {
             storage_commands::backup_folder_pick,
             storage_commands::backup_suggested_folder,
             storage_commands::library_damaged,
+            library_commands::playlist_share_link,
+            library_commands::take_open_link,
             storage_commands::library_restore_newest,
             storage_commands::cover_hd,
             storage_commands::cover_save,

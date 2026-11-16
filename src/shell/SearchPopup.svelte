@@ -3,6 +3,7 @@
   import { api, isAppError, SOURCES, type Collection, type LyricHit, type RemoteList, type SearchKind, type SearchResults, type SearchSource } from "../lib/api";
   import Button from "../lib/components/Button.svelte";
   import { dialogs } from "../lib/stores/dialogs.svelte";
+  import { explain } from "../lib/errors";
   import { errorText } from "./dialogs/importText";
   import Cover from "../lib/components/Cover.svelte";
   import Icon from "../lib/components/Icon.svelte";
@@ -19,7 +20,7 @@
   import { ui } from "../lib/stores/ui.svelte";
 
   const DEBOUNCE_MS = 260;
-  type Status = { state: "loading" } | { state: "done"; data: SearchResults } | { state: "error"; offline: boolean };
+  type Status = { state: "loading" } | { state: "done"; data: SearchResults } | { state: "error"; offline: boolean; error: unknown };
 
   type LinkStatus = { state: "loading" } | { state: "done"; list: RemoteList; url: string } | { state: "error"; text: string };
 
@@ -113,7 +114,7 @@
   }
 
   // Links from the services Relay can read (the same ones the Import box takes).
-  const LINK = /^(https?:\/\/|spotify:)|^(www\.)?(open\.spotify\.com|spotify\.link|music\.apple\.com|(www\.)?deezer\.com|deezer\.page\.link|(music\.)?youtube\.com|youtu\.be|(m\.)?soundcloud\.com|on\.soundcloud\.com)\//i;
+  const LINK = /^(https?:\/\/|spotify:|relay(-dev)?:\/\/playlist\/)|^(www\.)?(open\.spotify\.com|spotify\.link|music\.apple\.com|(www\.)?deezer\.com|deezer\.page\.link|(music\.)?youtube\.com|youtu\.be|(m\.)?soundcloud\.com|on\.soundcloud\.com)\//i;
   const isLink = (q: string) => LINK.test(q) && !/\s/.test(q);
 
   async function openLink(url: string, id: number) {
@@ -155,7 +156,7 @@
           // The top song is the most likely pick; look it up before the click.
           if (source === "youtube" && data.tracks[0]) warmNow(data.tracks[0]);
         },
-        (e) => id === seq && (results[source] = { state: "error", offline: isAppError(e) && (e.code === "offline" || e.code === "network") }),
+        (e) => id === seq && (results[source] = { state: "error", offline: isAppError(e) && (e.code === "offline" || e.code === "network"), error: e }),
       );
     }
   }
@@ -336,7 +337,11 @@
           <div class="status"><Spinner size={16} />{t("search.loading", { source: sourceLabel(s) })}</div>
         {/each}
         {#each failed as s (s)}
-          <div class="status"><Icon name="alert" size={16} />{(results[s] as { offline: boolean }).offline ? t("error.offline") : t("search.failed", { source: sourceLabel(s) })}</div>
+          {@const r = results[s] as Extract<Status, { state: "error" }>}
+          <div class="status">
+            <Icon name="alert" size={16} />{r.offline ? t("error.offline") : `${t("search.failed", { source: sourceLabel(s) })} ${explain(r.error).name}.`}
+            {#if !r.offline}<button class="link" onclick={() => dialogs.open({ kind: "error", error: explain(r.error), context: t("search.failed", { source: sourceLabel(s) }) })}>{t("err.details")}</button>{/if}
+          </div>
         {/each}
         {#if nothing && failed.length === 0}
           <p class="hint">{t("search.noResults", { q: query.trim() })}</p>

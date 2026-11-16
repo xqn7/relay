@@ -2,12 +2,14 @@
      working), and clear listening history. Both account changes ask for the current password,
      so nobody at an unlocked PC can take the account over. -->
 <script lang="ts">
-  import { api, isAppError } from "../../lib/api";
+  import { api, isAppError, type LockStatus } from "../../lib/api";
+  import Toggle from "../../lib/components/Toggle.svelte";
   import Button from "../../lib/components/Button.svelte";
   import Field from "../../lib/components/Field.svelte";
   import Segmented from "../../lib/components/Segmented.svelte";
   import type { Key } from "../../lib/i18n/en";
   import { t } from "../../lib/i18n/index.svelte";
+  import { showError } from "../../lib/errors";
   import { recoveryFileText } from "../../lib/recoveryFile";
   import { dialogs } from "../../lib/stores/dialogs.svelte";
   import { history } from "../../lib/stores/history.svelte";
@@ -22,6 +24,11 @@
     if (isAppError(e) && e.code === "password_too_short") return t("error.password_too_short");
     return t("error.generic");
   };
+
+  // Each form opens from its button and closes again after it's done or cancelled.
+  let pwOpen = $state(false);
+  let keyOpen = $state(false);
+  let lockMode = $state<"on" | "change" | "off" | null>(null);
 
   // ---- password ----
   let current = $state("");
@@ -39,13 +46,18 @@
     pwBusy = true;
     try {
       await api.accountChangePassword(current, next);
-      current = next = repeat = "";
+      closePassword();
       ui.toast(t("account.passwordChanged"), "check");
     } catch (e) {
       pwError = errorText(e);
     } finally {
       pwBusy = false;
     }
+  }
+
+  function closePassword() {
+    current = next = repeat = pwError = "";
+    pwOpen = false;
   }
 
   // ---- recovery key ----
@@ -70,6 +82,11 @@
     }
   }
 
+  function closeKey() {
+    keyPassword = keyError = newKey = "";
+    keyOpen = false;
+  }
+
   async function copyKey() {
     await navigator.clipboard.writeText(newKey);
     copied = true;
@@ -81,6 +98,54 @@
     } catch (e) {
       console.error("saving the recovery key failed", e);
       keyError = t("auth.recoverySaveFailed");
+    }
+  }
+
+  // ---- app lock ----
+  let lock = $state<LockStatus | null>(null);
+  let lockPassword = $state("");
+  let lockPin = $state("");
+  let lockPinAgain = $state("");
+  let lockError = $state("");
+  let lockBusy = $state(false);
+  const refreshLock = () =>
+    api
+      .lockStatus()
+      .then((s) => (lock = s))
+      .catch(() => {});
+  refreshLock();
+
+  function closeLock() {
+    lockPassword = lockPin = lockPinAgain = lockError = "";
+    lockMode = null;
+  }
+
+  async function saveLock(off: boolean) {
+    lockError = "";
+    if (!off && lockPin !== lockPinAgain) {
+      lockError = t("lock.pinsDiffer");
+      return;
+    }
+    lockBusy = true;
+    try {
+      if (off) await api.lockOff(lockPassword);
+      else await api.lockSetPin(lockPassword, lockPin);
+      closeLock();
+      ui.toast(off ? t("lock.turnedOff") : t("lock.saved"), "check");
+      await refreshLock();
+    } catch (e) {
+      lockError = isAppError(e) && e.code === "bad_pin" ? t("lock.badPin") : errorText(e);
+    } finally {
+      lockBusy = false;
+    }
+  }
+
+  async function toggleHello(on: boolean) {
+    try {
+      await api.lockSetHello(on);
+      await refreshLock();
+    } catch (e) {
+      showError(t("errctx.hello"), e);
     }
   }
 
@@ -107,8 +172,7 @@
           await history.refresh();
           ui.toast(t("account.historyCleared", { n }), "check");
         } catch (e) {
-          console.error("clearing history failed", e);
-          ui.toast(t("error.generic"), "alert");
+          showError(t("errctx.history"), e);
         }
       },
     });
@@ -117,19 +181,36 @@
 
 {#if visible("account.password", "account.passwordDesc")}
   <h3>{t("account.password")}</h3>
-  <div class="card form">
-    <p class="desc">{t("account.passwordDesc")}</p>
-    <Field label={t("account.currentPassword")} type="password" bind:value={current} autocomplete="current-password" />
-    <Field label={t("account.newPassword")} type="password" bind:value={next} autocomplete="new-password" />
-    <Field label={t("auth.confirmPassword")} type="password" bind:value={repeat} autocomplete="new-password" error={pwError} />
-    <div class="actions">
-      <Button variant="primary" busy={pwBusy} disabled={!current || !next || !repeat} onclick={changePassword}>{t("account.changePassword")}</Button>
+  {#if pwOpen}
+    <div class="card form">
+      <p class="desc">{t("account.passwordDesc")}</p>
+      <!-- svelte-ignore a11y_autofocus -->
+      <Field label={t("account.currentPassword")} type="password" bind:value={current} autocomplete="current-password" autofocus />
+      <Field label={t("account.newPassword")} type="password" bind:value={next} autocomplete="new-password" />
+      <Field label={t("auth.confirmPassword")} type="password" bind:value={repeat} autocomplete="new-password" error={pwError} />
+      <div class="actions">
+        <Button variant="ghost" onclick={closePassword}>{t("dialog.cancel")}</Button>
+        <Button variant="primary" busy={pwBusy} disabled={!current || !next || !repeat} onclick={changePassword}>{t("account.changePassword")}</Button>
+      </div>
     </div>
-  </div>
+  {:else}
+    <div class="card">
+      <SettingRow label={t("account.password")} desc={t("account.passwordDesc")}>
+        <Button variant="secondary" onclick={() => (pwOpen = true)}>{t("account.changePassword")}</Button>
+      </SettingRow>
+    </div>
+  {/if}
 {/if}
 
 {#if visible("account.recovery", "account.recoveryDesc")}
   <h3>{t("account.recovery")}</h3>
+  {#if !keyOpen}
+    <div class="card">
+      <SettingRow label={t("account.recovery")} desc={t("account.recoveryDesc")}>
+        <Button variant="secondary" icon="refresh" onclick={() => (keyOpen = true)}>{t("account.newRecoveryKey")}</Button>
+      </SettingRow>
+    </div>
+  {:else}
   <div class="card form">
     <p class="desc">{t("account.recoveryDesc")}</p>
     {#if newKey}
@@ -142,13 +223,60 @@
       </div>
       <p class="desc">{t("account.recoveryShownOnce")}</p>
       {#if keyError}<p class="error">{keyError}</p>{/if}
-    {:else}
-      <Field label={t("account.currentPassword")} type="password" bind:value={keyPassword} autocomplete="current-password" error={keyError} />
       <div class="actions">
-        <Button variant="secondary" icon="refresh" busy={keyBusy} disabled={!keyPassword} onclick={renewKey}>{t("account.newRecoveryKey")}</Button>
+        <Button variant="primary" onclick={closeKey}>{t("account.done")}</Button>
+      </div>
+    {:else}
+      <!-- svelte-ignore a11y_autofocus -->
+      <Field label={t("account.currentPassword")} type="password" bind:value={keyPassword} autocomplete="current-password" error={keyError} autofocus />
+      <div class="actions">
+        <Button variant="ghost" onclick={closeKey}>{t("dialog.cancel")}</Button>
+        <Button variant="primary" icon="refresh" busy={keyBusy} disabled={!keyPassword} onclick={renewKey}>{t("account.newRecoveryKey")}</Button>
       </div>
     {/if}
   </div>
+  {/if}
+{/if}
+
+{#if visible("lock.title", "lock.desc")}
+  <h3>{t("lock.title")}</h3>
+  {#if lockMode}
+    <div class="card form">
+      <p class="desc">{lockMode === "off" ? t("lock.offDesc") : lock?.pin ? t("lock.onDesc") : t("lock.desc")}</p>
+      <!-- svelte-ignore a11y_autofocus -->
+      <Field label={t("account.currentPassword")} type="password" bind:value={lockPassword} autocomplete="current-password" error={lockMode === "off" ? lockError : ""} autofocus />
+      {#if lockMode !== "off"}
+        <Field label={lockMode === "change" ? t("lock.newPin") : t("lock.pin")} type="password" bind:value={lockPin} autocomplete="off" placeholder={t("lock.pinHint")} />
+        <Field label={t("lock.pinAgain")} type="password" bind:value={lockPinAgain} autocomplete="off" error={lockError} />
+      {/if}
+      <div class="actions">
+        <Button variant="ghost" onclick={closeLock}>{t("dialog.cancel")}</Button>
+        {#if lockMode === "off"}
+          <Button variant="primary" busy={lockBusy} disabled={!lockPassword} onclick={() => saveLock(true)}>{t("lock.turnOff")}</Button>
+        {:else}
+          <Button variant="primary" busy={lockBusy} disabled={!lockPassword || !lockPin || !lockPinAgain} onclick={() => saveLock(false)}>{lockMode === "change" ? t("lock.changePin") : t("lock.turnOn")}</Button>
+        {/if}
+      </div>
+    </div>
+  {:else}
+    <div class="card">
+      <SettingRow label={t("lock.title")} desc={lock?.pin ? t("lock.onDesc") : t("lock.desc")}>
+        {#if lock?.pin}
+          <span class="row-actions">
+            <Button variant="secondary" onclick={() => (lockMode = "change")}>{t("lock.changePin")}</Button>
+            <Button variant="ghost" onclick={() => (lockMode = "off")}>{t("lock.turnOff")}</Button>
+          </span>
+        {:else}
+          <Button variant="secondary" icon="lock" onclick={() => (lockMode = "on")}>{t("lock.turnOn")}</Button>
+        {/if}
+      </SettingRow>
+      {#if lock?.pin && lock.helloAvailable}
+        <SettingRow label={t("lock.hello")} desc={t("lock.helloDesc")}>
+          <Toggle label={t("lock.hello")} checked={lock.hello} onchange={toggleHello} />
+        </SettingRow>
+      {/if}
+    </div>
+  {/if}
 {/if}
 
 {#if visible("account.history", "account.historyDesc")}
@@ -178,6 +306,11 @@
   .actions {
     display: flex;
     justify-content: flex-end;
+    gap: 8px;
+  }
+  .row-actions {
+    display: flex;
+    gap: 6px;
   }
   .key {
     display: flex;

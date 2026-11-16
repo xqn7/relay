@@ -10,6 +10,7 @@ use minisign_verify::{PublicKey, Signature};
 use serde::Serialize;
 use serde_json::Value;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::Emitter;
@@ -127,20 +128,40 @@ fn update_dir(state: &AppState) -> PathBuf {
 /// Startup: one quiet check right away, in the background so the window doesn't wait for it.
 /// Finds and downloads; the UI hears about it through "update-ready".
 pub fn check_on_start(state: &Arc<AppState>) {
+    LAST_CHECK.store(crate::util::now_secs(), Ordering::SeqCst);
     let state = state.clone();
     tauri::async_runtime::spawn(async move {
         let _ = std::fs::remove_dir_all(update_dir(&state));
-        if !state.net.online() {
-            eprintln!("update check skipped: offline");
-            return;
-        }
-        // Every outcome is logged, so a missed update can be traced in a problem report.
-        match check(&state).await {
-            Ok(Some(info)) => eprintln!("update {} downloaded", info.version),
-            Ok(None) => eprintln!("update check: up to date"),
-            Err(e) => eprintln!("update check failed: {e}"),
-        }
+        check_logged(&state).await;
     });
+}
+
+/// Relay brought back from the tray (or opened again while running): closing the window only
+/// hides it, so without this an update would wait for a full restart. At most every RECHECK.
+pub fn check_when_shown(state: &Arc<AppState>) {
+    let now = crate::util::now_secs();
+    if crate::is_dev() || now - LAST_CHECK.load(Ordering::SeqCst) < RECHECK.as_secs() as i64 {
+        return;
+    }
+    LAST_CHECK.store(now, Ordering::SeqCst);
+    let state = state.clone();
+    tauri::async_runtime::spawn(async move { check_logged(&state).await });
+}
+
+static LAST_CHECK: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+const RECHECK: Duration = Duration::from_secs(30 * 60);
+
+async fn check_logged(state: &Arc<AppState>) {
+    if !state.net.online() {
+        eprintln!("update check skipped: offline");
+        return;
+    }
+    // Every outcome is logged, so a missed update can be traced in a problem report.
+    match check(state).await {
+        Ok(Some(info)) => eprintln!("update {} downloaded", info.version),
+        Ok(None) => eprintln!("update check: up to date"),
+        Err(e) => eprintln!("update check failed: {e}"),
+    }
 }
 
 /// An update already downloaded and waiting, if any.

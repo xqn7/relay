@@ -7,6 +7,7 @@ import { t } from "../i18n/index.svelte";
 import { PlayCounter } from "../player/playCount";
 import * as Q from "../player/queue";
 import { warmNow } from "../player/warm";
+import { explain } from "../errors";
 import { dialogs } from "./dialogs.svelte";
 import { history } from "./history.svelte";
 import { library } from "./library.svelte";
@@ -46,6 +47,7 @@ interface Saved extends Q.QueueState {
 
 /** How long after start the restored song is looked up. */
 const RESTORE_WARM_MS = 2500;
+
 
 class Player {
   queue = $state<Q.QueueState>(Q.emptyQueue);
@@ -462,7 +464,10 @@ class Player {
       } else ui.toast(t("offline.nothingLeft"), "alert");
       return;
     }
-    ui.toast(text, "alert");
+    // Network trouble explains itself; anything else gets its name, meaning, fix and report.
+    const context = `${item.track.title} · ${artistLine(item.track)}`;
+    const details = code === "offline" || code === "network" ? undefined : { label: t("err.details"), run: () => dialogs.open({ kind: "error", error: explain(e), context }) };
+    ui.toast(text, "alert", details);
     this.failsInARow += 1;
     if (code === "offline" || code === "network" || this.failsInARow >= MAX_FAILS_IN_A_ROW) {
       this.failsInARow = 0;

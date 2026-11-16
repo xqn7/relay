@@ -2,6 +2,7 @@
 // records nothing (the backend refuses too) and ends when the app restarts.
 import { listen } from "@tauri-apps/api/event";
 import { api, type Track } from "../api";
+import { showError } from "../errors";
 import { t } from "../i18n/index.svelte";
 import { ui } from "./ui.svelte";
 
@@ -50,8 +51,8 @@ class HistoryStore {
       await api.privateSet(on);
       this.private = on;
       ui.toast(on ? t("private.on") : t("private.off"), on ? "lock" : "check");
-    } catch {
-      ui.toast(t("error.generic"), "alert");
+    } catch (e) {
+      showError(t("errctx.private"), e);
     }
   }
 }

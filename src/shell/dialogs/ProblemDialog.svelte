@@ -1,6 +1,7 @@
 <!-- "Send a problem report": what went wrong in the user's words, an optional screenshot, and
      the app's log. Names, emails and folder paths are removed before it's sent. -->
 <script lang="ts">
+  import { untrack } from "svelte";
   import { api, isAppError } from "../../lib/api";
   import Button from "../../lib/components/Button.svelte";
   import Dialog from "../../lib/components/Dialog.svelte";
@@ -12,7 +13,10 @@
 
   const MAX_PICTURE_BYTES = 8 * 1024 * 1024;
 
-  let text = $state("");
+  /** Filled in when opened from an error (the song that couldn't play), ready to send. */
+  let { prefill = "" }: { prefill?: string } = $props();
+
+  let text = $state(untrack(() => prefill));
   let picture = $state<File | null>(null);
   let preview = $state("");
   let sending = $state(false);

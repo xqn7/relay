@@ -62,7 +62,7 @@ pub struct Stats {
 }
 
 fn track_from(data: &str) -> Option<Track> {
-    serde_json::from_str(data).ok()
+    serde_json::from_str::<Track>(data).ok().map(Track::with_split_credits)
 }
 
 pub fn record(db: &Db, account: &str, track: &Track, ms: i64) -> AppResult<String> {

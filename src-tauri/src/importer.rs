@@ -96,6 +96,11 @@ pub async fn read(state: &Arc<AppState>, url: &str) -> AppResult<RemoteList> {
             return Ok(list.clone());
         }
     }
+    if crate::sharelink::is_share_link(url) {
+        let list = crate::sharelink::parse(url)?;
+        lock(&state.imports.previews).insert(url.to_string(), (Instant::now(), list.clone()));
+        return Ok(list);
+    }
     if crate::m3u::is_playlist_path(url) {
         let list = crate::m3u::read(state, std::path::Path::new(url)).await?;
         lock(&state.imports.previews).insert(url.to_string(), (Instant::now(), list.clone()));
