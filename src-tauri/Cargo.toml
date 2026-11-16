@@ -1,6 +1,6 @@
 [package]
 name = "relay"
-version = "0.1.6"
+version = "0.1.7"
 description = "Relay music player"
 authors = ["xqn7"]
 license = "GPL-3.0-or-later"
