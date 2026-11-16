@@ -130,10 +130,15 @@ pub fn check_on_start(state: &Arc<AppState>) {
     let state = state.clone();
     tauri::async_runtime::spawn(async move {
         let _ = std::fs::remove_dir_all(update_dir(&state));
-        if state.net.online() {
-            if let Err(e) = check(&state).await {
-                eprintln!("update check failed: {e}");
-            }
+        if !state.net.online() {
+            eprintln!("update check skipped: offline");
+            return;
+        }
+        // Every outcome is logged, so a missed update can be traced in a problem report.
+        match check(&state).await {
+            Ok(Some(info)) => eprintln!("update {} downloaded", info.version),
+            Ok(None) => eprintln!("update check: up to date"),
+            Err(e) => eprintln!("update check failed: {e}"),
         }
     });
 }

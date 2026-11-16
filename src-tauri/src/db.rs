@@ -277,10 +277,14 @@ impl Db {
     /// is renamed, not deleted, and a fresh library starts; `true` says that happened, so the
     /// app can offer the latest backup.
     pub fn open_checked(path: &Path) -> AppResult<(Self, bool)> {
-        let healthy = Connection::open(path)
-            .and_then(|c| c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0)))
-            .is_ok_and(|answer| answer == "ok");
-        if healthy || !path.exists() {
+        let check = Connection::open(path).and_then(|c| c.query_row("PRAGMA quick_check", [], |r| r.get::<_, String>(0)));
+        // Only real damage counts: a file that's merely busy or unreadable for a moment (a backup
+        // or virus scan holding it) must never be set aside; opening it reports that as usual.
+        let damaged = match &check {
+            Ok(answer) => answer != "ok",
+            Err(e) => matches!(e.sqlite_error_code(), Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase)),
+        };
+        if !damaged || !path.exists() {
             return Ok((Self::open(path)?, false));
         }
         let aside = path.with_file_name(format!("relay.damaged-{}.db", crate::util::now_secs()));

@@ -53,10 +53,22 @@ SetVersion "package.json" '^(  "version": )"[^"]+"' "`$1`"$Version`""
 SetVersion "src-tauri\tauri.conf.json" '^(  "version": )"[^"]+"' "`$1`"$Version`""
 SetVersion "src-tauri\Cargo.toml" '^(version = )"[^"]+"' "`$1`"$Version`""
 
+# The tests run next to the build (each has its own build folder, so they don't wait on each
+# other); nothing is signed or published unless they pass.
+$tests = $null
 if (-not $SkipTests) {
-  Run "Rust tests" { Push-Location src-tauri; cargo test --quiet; $c = $LASTEXITCODE; Pop-Location; $global:LASTEXITCODE = $c }
-  Run "Type check" { npm run check --silent }
-  Run "Frontend tests" { npm test --silent }
+  $tests = Start-Job -ArgumentList $root -ScriptBlock {
+    param($root)
+    Set-Location (Join-Path $root "src-tauri")
+    $out = cargo test --quiet 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { return "Rust tests failed:`n$out" }
+    Set-Location $root
+    $out = npm run check --silent 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { return "Type check failed:`n$out" }
+    $out = npm test --silent 2>&1 | Out-String
+    if ($LASTEXITCODE -ne 0) { return "Frontend tests failed:`n$out" }
+    ""
+  }
 }
 
 # The real Relay is built outside the project folder, which only ever holds Relay Dev builds.
@@ -64,6 +76,13 @@ $releaseTarget = Join-Path $env:LOCALAPPDATA "relay-release\target"
 $env:CARGO_TARGET_DIR = $releaseTarget
 Run "Build" { npx tauri build }
 Remove-Item Env:CARGO_TARGET_DIR
+
+if ($tests) {
+  Write-Host "`n== Tests (ran next to the build)" -ForegroundColor Cyan
+  $failure = Receive-Job $tests -Wait -AutoRemoveJob
+  if ($failure) { Fail $failure }
+  Write-Host "All tests passed."
+}
 
 $nsis = Join-Path $releaseTarget "release\bundle\nsis"
 $setup = Get-ChildItem $nsis -Filter "Relay_${Version}_x64-setup.exe" | Select-Object -First 1
